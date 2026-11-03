@@ -7,9 +7,12 @@ waze-on-cluster 0.8.0 with cluster-render 0.4.0.
 
 - **Show map on**: one button switches the map between the cluster and the HUD;
   the map moves at once and the choice is kept for the next start.
-- **HUD map size**: Standard (the fitted box, about 57 % of the HUD's width),
-  70 %, 85 % (the widest: wider is cut off at the HUD's edges) and 40 %,
-  resized at once and kept. Enabled while the map goes to the HUD.
+- **HUD map larger / smaller**: the HUD map's width in 5 % steps from 30 % to
+  85 % of the HUD's (the widest: wider is cut off at its edges), resized at
+  once and kept. Standard is the fitted box, about 57 %.
+- **Move HUD map left / right / up / down** (10 px a press, held inside the
+  HUD) and **Centre HUD map**: the map moves at once and its place is kept.
+  These are enabled while the map goes to the HUD.
 - On the HUD the map's frames are scaled on the head unit to the size they are
   shown at (sharper, 2-6x less data to the KOMBI), its corners are rounded, and
   a night map's background is made black - which the HUD shows as nothing - so
@@ -18,7 +21,7 @@ waze-on-cluster 0.8.0 with cluster-render 0.4.0.
 - The HUD map steps aside while the HUD's media and list pop-ups show, so they
   stay in the HUD instead of moving to the cluster, and comes back after they
   close; the status says so meanwhile.
-- **Per driver profile**: Show map on and the HUD map size are kept for each
+- **Per driver profile**: Show map on and the HUD map's size and position are kept for each
   driver profile, and follow the profile when the driver changes.
 
 ## 0.4.1

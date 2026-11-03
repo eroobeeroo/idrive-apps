@@ -51,6 +51,10 @@ One `LT_State_Wide` page:
 | Show map on: Cluster / HUD | moves the map between the instrument cluster and the head-up display at once; kept for the next start and per driver profile |
 | HUD map size | Standard (about 57 % of the HUD's width), 70 %, 85 % or 40 %, resized at once; kept like Show map on. Enabled while the map goes to the HUD |
 | Restart head unit | a normal system reboot; shown only while a written change waits for the next head-unit start |
+| Show map on: Cluster / HUD | moves the map between the instrument cluster and the head-up display, at once (HUD support by [eroobeeroo](https://github.com/eroobeeroo)) |
+| HUD map larger / smaller | the HUD map's width in 5 % steps, 30-85 % of the HUD (the row shows the size now); enabled while the map is on the HUD |
+| Move HUD map left / right / up / down | moves the HUD map 10 px a press, held inside the HUD |
+| Centre HUD map | puts it back in the middle (the row shows how far it is moved) |
 | Capture logs (5 min) / Stop capture | a bounded DLT capture for diagnostics; start it, then reconnect CarPlay |
 | 30 rows | both tools' log lines, newest first, tagged `map:` / `patch:` |
 

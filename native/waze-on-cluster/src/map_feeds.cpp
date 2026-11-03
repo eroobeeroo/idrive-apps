@@ -130,6 +130,14 @@ void MapFeeds::set_hud_width(unsigned pct)
         f->set_hud_width(pct);
 }
 
+void MapFeeds::set_hud_offset(int dx, int dy)
+{
+    base_.hud_offset_x = dx;
+    base_.hud_offset_y = dy;
+    for (auto &f : feeds_)
+        f->set_hud_offset(dx, dy);
+}
+
 size_t MapFeeds::poll_fds(std::vector<pollfd> *fds) const
 {
     const size_t first = fds->size();
@@ -184,6 +192,8 @@ FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream
     }
     s.target = join_targets(targets_);
     s.hud_width_pct = base_.hud_width_pct;
+    s.hud_offset_x = base_.hud_offset_x;
+    s.hud_offset_y = base_.hud_offset_y;
     return s;
 }
 

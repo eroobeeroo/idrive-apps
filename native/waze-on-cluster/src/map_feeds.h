@@ -50,6 +50,10 @@ public:
     const std::vector<std::string> &targets() const { return targets_; }
     /* The HUD map's size, kept for a HUD feed made later. */
     void set_hud_width(unsigned pct);
+    /* The HUD map moved from its centred place (the HUD feed moves at once). */
+    void set_hud_offset(int dx, int dy);
+    int hud_offset_x() const { return base_.hud_offset_x; }
+    int hud_offset_y() const { return base_.hud_offset_y; }
 
     /* For poll(): one entry per feed, appended; after_poll takes the same
      * vector and where they start. */
