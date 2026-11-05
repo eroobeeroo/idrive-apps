@@ -487,6 +487,30 @@ class WazeClusterControl extends EventEmitter {
         this.emit('change');
     }
 
+    /* Pause map: the map hidden and no frames sent, on the cluster and the HUD, as asked or as the render last
+     * said; null while the render has not said (not connected, or a tool without it). Saved for the next start. */
+    mapPaused() {
+        if (this._askedPause != null) {
+            return this._askedPause;
+        }
+        const p = this.renderStatus && this.renderStatus.paused;
+        return p === 0 || p === 1 ? p === 1 : null;
+    }
+    canPause() {
+        return this.render.connected() && this.mapPaused() !== null;
+    }
+    /* Flips it: the render pauses or resumes at once, patchd saves it. */
+    togglePause() {
+        if (!this.canPause()) {
+            return;
+        }
+        const on = this.mapPaused() ? 0 : 1;
+        this._askedPause = on === 1;
+        this.render.send({ cmd: 'pause', on });
+        this.patch.send({ cmd: 'pause', on });
+        this.emit('change');
+    }
+
     /* The HUD map's width in % of the HUD's (0: Standard), as asked or as the render last said. */
     hudWidth() {
         if (this._askedHud != null) {
@@ -916,6 +940,9 @@ class WazeClusterControl extends EventEmitter {
             if (this._askedFade != null && msg.hud_edge_fade_pct === this._askedFade) {
                 this._askedFade = null;
             }
+            if (this._askedPause != null && msg.paused === (this._askedPause ? 1 : 0)) {
+                this._askedPause = null;
+            }
             this.emit('change');
         }
     }
@@ -941,7 +968,7 @@ class WazeClusterControl extends EventEmitter {
                 this._restartRequested = false;
             }
             this.emit('change');
-        } else if (/^(target|hud-size|hud-pos|hud-fade)-reply$/.test(msg.ev)) {
+        } else if (/^(target|hud-size|hud-pos|hud-fade|pause)-reply$/.test(msg.ev)) {
             /* this fork's HUD settings, saved for the next start and the driver profile */
             if (!msg.ok) {
                 this._log.warn(`patchd did not save ${msg.ev.replace(/-reply$/, '')}: ${msg.reason || 'refused'}`);

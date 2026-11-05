@@ -84,6 +84,7 @@ std::string status_line(const FeedStatus &s)
            ",\"hud_width_pct\":" + std::to_string(s.hud_width_pct) +
            ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) +
            ",\"hud_edge_fade_pct\":" + std::to_string(s.hud_edge_fade_pct) +
+           ",\"paused\":" + (s.paused ? "1" : "0") +
            ",\"hide_bmw_guidance\":" + (s.guide_hold ? "1" : "0") +
            ",\"guide_disabled\":" + (s.guide_disabled ? "1" : "0") + "}";
 }
@@ -105,10 +106,15 @@ public:
         auto hx = msg.find("hud_x"), hy = msg.find("hud_y");
         auto fade = msg.find("hud_edge_fade_pct");
         auto hide = msg.find("hide");
+        auto on = msg.find("on");
         if (cmd == "start" && it != msg.end()) {
             log_info("start %s", it->second.c_str());
             if (!feeds_->set_targets(it->second))
                 log_warn("start: the cluster renderer has no target %s", it->second.c_str());
+        } else if (cmd == "pause" && on != msg.end() && (on->second == "0" || on->second == "1")) {
+            /* the app's Pause map: the map hidden and no frames sent until resumed (patchd saves it) */
+            log_info("pause: map %s", on->second == "1" ? "paused" : "resumed");
+            feeds_->set_paused(on->second == "1");
         } else if (cmd == "guide" && hide != msg.end() && guide_->set(hide->second)) {
             log_info("guide: BMW's turn box %s while the map shows", guide_->hide() ? "hidden" : "shown");
             feeds_->set_guide_hold(guide_->hide());
@@ -205,7 +211,7 @@ int serve(const Config &cfg)
                      "(upload_kb_per_s in /var/opt/cluster-render/cluster-render.local.conf)", key, cfg.str(key).c_str());
     struct Range { const char *key; long lo, hi; } ranges[] = {
         {"dirty_threshold", 0, 64}, {"dirty_settle_ms", 0, 3600000}, {"tex_level_bits", 0, 3},
-        {"target_fps", 0, 60},      {"hud_width_pct", 0, 100},      {"hud_offset_x", -800, 800},      {"hud_offset_y", -800, 800},      {"hud_scale_down", 0, 1},      {"hud_round_corners", 0, 1},      {"hud_black_background", 0, 1},      {"hud_edge_fade_pct", 0, 30},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
+        {"target_fps", 0, 60},      {"hud_width_pct", 0, 100},      {"hud_offset_x", -800, 800},      {"hud_offset_y", -800, 800},      {"hud_scale_down", 0, 1},      {"hud_round_corners", 0, 1},      {"hud_black_background", 0, 1},      {"hud_edge_fade_pct", 0, 30},      {"map_paused", 0, 1},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
         {"freeze_ms", 0, 600000},   {"freeze_min_fps", 1, 60},       {"alt_screen_port", 0, 65535},
         {"idle_ms", 1000, 600000},  {"blank_ms", 1000, 600000},
         {"alt_screen_uid", 0, 4294967294L}};
@@ -258,6 +264,10 @@ int serve(const Config &cfg)
     std::string err;
     VideoProducer producer(vc);
     MapFeeds feed(fc);
+    if (cfg.num("map_paused") != 0) {   /* the app's Pause map, saved by patchd */
+        log_info("pause: the map starts paused (map_paused = 1)");
+        feed.set_paused(true);
+    }
     Server server(&feed, &guide);
     Control control(&server);
     server.set_control(&control);
@@ -483,6 +493,7 @@ void define_keys(Config *cfg)
     cfg->define("hud_round_corners", "1");
     cfg->define("hud_black_background", "1");
     cfg->define("hud_edge_fade_pct", "0");
+    cfg->define("map_paused", "0");
     cfg->define("hide_bmw_guidance", "1");
     cfg->define("state_file", "/var/opt/waze-on-cluster/state/waze-on-cluster.state.conf");
     cfg->define("render_socket", "/dev/shm/cluster-render/render.sock");

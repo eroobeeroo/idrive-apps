@@ -87,6 +87,7 @@ std::unique_ptr<MapFeed> MapFeeds::make(const std::string &target)
     fc.target = target;
     std::unique_ptr<MapFeed> f(new MapFeed(fc));
     f->set_stream(live_, frozen_, picture_);
+    f->set_paused(paused_);
     return f;
 }
 
@@ -179,6 +180,13 @@ void MapFeeds::set_stream(bool live, bool frozen, Picture picture)
         f->set_stream(live, frozen, picture);
 }
 
+void MapFeeds::set_paused(bool paused)
+{
+    paused_ = paused;
+    for (auto &f : feeds_)
+        f->set_paused(paused);
+}
+
 void MapFeeds::set_guide_hold(bool hold)
 {
     base_.guide_hold = hold;
@@ -211,6 +219,7 @@ FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream
     s.hud_offset_y = base_.hud_offset_y;
     s.hud_edge_fade_pct = base_.hud_edge_fade_pct;
     s.guide_hold = base_.guide_hold;
+    s.paused = paused_;
     return s;
 }
 

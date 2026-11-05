@@ -56,7 +56,7 @@ function ask(obj) {
             buf.split('\n').forEach(function (l) {
                 var m = null;
                 try { m = JSON.parse(l); } catch (e) {}
-                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply' || m.ev === 'hud-fade-reply')) { s.end(); resolve(m); }
+                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply' || m.ev === 'hud-fade-reply' || m.ev === 'pause-reply')) { s.end(); resolve(m); }
             });
         });
         s.on('error', reject);
@@ -111,6 +111,13 @@ function ok(name, cond) {
     ok('off again: replaced', r.ok && /hud_edge_fade_pct = 0\n$/.test(fs.readFileSync(CONF, 'utf8')));
     r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 31 });
     ok('an out-of-range fade is refused, nothing written', !r.ok && /hud_edge_fade_pct = 0\n$/.test(fs.readFileSync(CONF, 'utf8')));
+    r = await ask({ cmd: 'pause', on: 1 });
+    ok('Pause map is saved for the next start', r.ok && r.on === 1 && /map_paused = 1\n$/.test(fs.readFileSync(CONF, 'utf8')));
+    r = await ask({ cmd: 'pause', on: 0 });
+    ok('and resumed: replaced', r.ok && r.on === 0 && /map_paused = 0\n$/.test(fs.readFileSync(CONF, 'utf8')) &&
+        (fs.readFileSync(CONF, 'utf8').match(/map_paused/g) || []).length === 1);
+    r = await ask({ cmd: 'pause', on: 2 });
+    ok('anything but 0 or 1 is refused', !r.ok);
 })().catch(function (e) {
     ok('no error: ' + e.message, false);
 }).then(function () {

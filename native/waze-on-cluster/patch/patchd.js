@@ -58,6 +58,10 @@
  *                                   the HUD map moved from its centre (HUD pixels): saved as
  *                                   "hud_offset_x / hud_offset_y = ..."; kept per profile too;
  *                                   hud-pos-reply carries ok/hud_x/hud_y/reason
+ *                  {"cmd":"pause","on":0|1}
+ *                                   the app's Pause map, saved as "map_paused = ..." for the
+ *                                   render's next start (not per profile); pause-reply carries
+ *                                   ok/on/reason
  *                  {"cmd":"hud-fade","hud_edge_fade_pct":0..30}
  *                                   the HUD map's edges feathered (% of its height, 0: off):
  *                                   saved as "hud_edge_fade_pct = ..."; kept per profile too;
@@ -1404,6 +1408,19 @@ function handle(line, sock) {
                 else log('HUD map position: ' + (hx || hy ? (hx >= 0 ? '+' : '') + hx + ', ' + (hy >= 0 ? '+' : '') + hy + ' px from the centre' : 'centred') + ' (saved for the next start)');
                 try { sock.write(JSON.stringify({ ev: 'hud-pos-reply', ok: !err2, hud_x: hx, hud_y: hy, reason: err2 ? err2.message : undefined }) + '\n'); } catch (e) {}
             });
+        });
+        return;
+    }
+    if (msg.cmd === 'pause') {
+        var on = Number(msg.on);
+        if (on !== 0 && on !== 1) {
+            try { sock.write(JSON.stringify({ ev: 'pause-reply', ok: false, reason: 'on must be 0 or 1' }) + '\n'); } catch (e) {}
+            return;
+        }
+        saveSetting('map_paused', String(on), function (err) {
+            if (err) log('saving the map pause failed: ' + err.message);
+            else log('map ' + (on ? 'paused' : 'resumed') + ' (saved for the next start)');
+            try { sock.write(JSON.stringify({ ev: 'pause-reply', ok: !err, on: on, reason: err ? err.message : undefined }) + '\n'); } catch (e) {}
         });
         return;
     }

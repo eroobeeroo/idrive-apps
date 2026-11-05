@@ -224,8 +224,8 @@ async function main() {
         'wocHeadCarPlay CarPlay', 'wocStatus Status: Connecting…', 'wocEnable Patch', 'wocDisable Remove patch',
         'wocHeadAa Android Auto', 'wocAaStatus Status: Connecting…', 'wocAaEnable Patch', 'wocAaDisable Remove patch',
         'wocAaZoom Zoom: —', 'wocAaZoomOut Zoom out', 'wocAaZoomIn Zoom in', "wocAaCard Hide phone's turn card",
-        /* this fork's Head-up display section */
-        'wocHeadHud Head-up display', 'wocDisplay Show map on: …', 'wocHudSize HUD map larger (now …)', 'wocHudSmaller HUD map smaller',
+        /* this fork's Map display section */
+        'wocHeadHud Map display', 'wocPause Pause map', 'wocDisplay Show map on: …', 'wocHudSize HUD map larger (now …)', 'wocHudSmaller HUD map smaller',
         'wocHudLeft Move HUD map left', 'wocHudRight Move HUD map right', 'wocHudUp Move HUD map up', 'wocHudDown Move HUD map down',
         'wocHudCentre Centre HUD map', 'wocHudFade HUD edge fade: …',
         'wocHeadGeneral General', 'wocMap Cluster map: Off', "wocGuide Hide BMW's turn box", 'wocLogs Logs', 'wocRestart Restart head unit',
@@ -238,7 +238,7 @@ async function main() {
     assert.deepStrictEqual(['wocHeadCarPlay', 'wocHeadAa', 'wocHeadHud', 'wocHeadGeneral'].map((n) => widgets[n]), Array(4).fill('LT_Label_Header_1Row'),
         'the section headers are header rows');
     assert(!main.some(([, , name]) => /^wocRow|^wocSetup|^wocCapture/.test(name)), 'no log rows, setup line or capture on the main page');
-    assert.deepStrictEqual(['wocAaCard', 'wocGuide'].map((n) => widgets[n]), ['LT_CheckBox_1Row', 'LT_CheckBox_1Row'], 'the Hide settings are checkboxes');
+    assert.deepStrictEqual(['wocAaCard', 'wocGuide', 'wocPause'].map((n) => widgets[n]), Array(3).fill('LT_CheckBox_1Row'), 'the on/off settings are checkboxes');
     /* every info row reads "Name: Value" */
     assert(main.filter(([, type, name]) => type === 'label' && !/^wocHead|^wocRestartStatus$/.test(name))
         .every(([, , , text]) => /^[A-Z][a-z ]+: [A-Z\u2014]/.test(text)), 'info rows as Name: Value');
@@ -279,11 +279,11 @@ async function main() {
         const bound = logs.filter((l) => l.startsWith('info: BIND OK: ')).map((l) => l.split(' ')[3]).sort();
         assert.deepStrictEqual(bound, ['wocAaCard', 'wocAaDisable', 'wocAaEnable', 'wocAaZoomIn', 'wocAaZoomOut', 'wocCapture', 'wocDisable', 'wocDisplay',
             'wocEnable', 'wocGuide', 'wocHudCentre', 'wocHudDown', 'wocHudFade', 'wocHudLeft', 'wocHudRight', 'wocHudSize', 'wocHudSmaller', 'wocHudUp',
-            'wocLogs', 'wocLogsSave', 'wocRestart'], 'bound buttons and checkbox');
+            'wocLogs', 'wocLogsSave', 'wocPause', 'wocRestart'], 'bound buttons and checkbox');
         assert.strictEqual(byName.wocRestart.visible, false, 'restart button hidden while the map shows');
         /* this fork's Head-up display section: greyed on the cluster, live on the HUD */
         await until('HUD rows on the cluster', () => byName.wocDisplay.text === 'Show map on: Cluster' && byName.wocDisplay.enabled === true &&
-            byName.wocHudFade.enabled === false && byName.wocHudLeft.enabled === false && byName.wocHeadHud.text === 'Head-up display');
+            byName.wocHudFade.enabled === false && byName.wocHudLeft.enabled === false && byName.wocHeadHud.text === 'Map display');
         byName.wocDisplay.emit('action');
         await until('on the HUD', () => render.target === 'hud' && byName.wocDisplay.text === 'Show map on: HUD' &&
             byName.wocHudFade.enabled === true && byName.wocHudSize.text === 'HUD map larger (now Standard)');
@@ -304,6 +304,14 @@ async function main() {
         byName.wocDisplay.emit('action');
         await until('back on the cluster, the HUD rows greyed', () => render.target === 'map' && render.hudFade === 0 && render.hudX === 0 &&
             byName.wocHudFade.enabled === false);
+        /* Pause map: ticked and the map paused through the render, saved by patchd; unticked again */
+        await until('Pause map unticked, enabled', () => byName.wocPause.enabled === true && byName.wocPause.selected === false && byName.wocPause.text === 'Pause map');
+        byName.wocPause.emit('action');
+        await until('paused', () => render.paused === 1 && byName.wocPause.selected === true && byName.wocMap.text === 'Cluster map: Paused' &&
+            patch.received.some((m) => m.cmd === 'pause' && m.on === 1));
+        await sleep(450);
+        byName.wocPause.emit('action');
+        await until('resumed', () => render.paused === 0 && byName.wocPause.selected === false && byName.wocMap.text !== 'Cluster map: Paused');
         render.received.length = 0;   /* what follows checks the Patch buttons send the render nothing */
         console.log('ok   the Head-up display section: Show map on, size, place and edge fade through the render, saved by patchd');
         console.log('ok   a page opened while the map is up shows it');

@@ -34,7 +34,8 @@
  * hide counts only after HIDE_SETTLE_MS. waze_cluster_control.js holds the
  * protocol.
  *
- * This fork adds a Head-up display section before General: Show map on
+ * This fork adds a Map display section before General: Pause map (a
+ * checkbox: the map hidden and no frames sent, saved for the next start), Show map on
  * (Cluster or HUD; each press switches, saved for the next start), HUD map
  * larger / smaller, Move HUD map left / right / up / down, Centre HUD map
  * and HUD edge fade (Off / Soft / Medium / Strong); the HUD rows are enabled
@@ -77,15 +78,16 @@ const AA_ZOOM_OUT_NAME = 'wocAaZoomOut';
 const AA_ZOOM_IN_NAME = 'wocAaZoomIn';
 const AA_CARD_NAME = 'wocAaCard';
 const GUIDE_NAME = 'wocGuide';
-/* this fork: the Head-up display section */
+/* this fork: the Map display section */
 const HEAD_HUD_NAME = 'wocHeadHud';
+const PAUSE_NAME = 'wocPause';               /* Pause map: a checkbox */
 const DISPLAY_NAME = 'wocDisplay';
 const HUD_SIZE_NAME = 'wocHudSize';         /* HUD map larger */
 const HUD_SMALLER_NAME = 'wocHudSmaller';
 const HUD_MOVE_NAMES = { left: 'wocHudLeft', right: 'wocHudRight', up: 'wocHudUp', down: 'wocHudDown' };
 const HUD_CENTRE_NAME = 'wocHudCentre';
 const HUD_FADE_NAME = 'wocHudFade';         /* HUD edge fade: Off / Soft / Medium / Strong */
-const HUD_NAMES = [HEAD_HUD_NAME, DISPLAY_NAME, HUD_SIZE_NAME, HUD_SMALLER_NAME].concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, HUD_FADE_NAME]);
+const HUD_NAMES = [HEAD_HUD_NAME, PAUSE_NAME, DISPLAY_NAME, HUD_SIZE_NAME, HUD_SMALLER_NAME].concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, HUD_FADE_NAME]);
 const HEAD_GENERAL_NAME = 'wocHeadGeneral';
 const CAPTURE_NAME = 'wocCapture';
 const CAPTURE_STATUS = 'wocCaptureStatus';
@@ -224,6 +226,11 @@ class WazeClusterApp extends OnlineApp {
             this._control.toggleGuidance();
         });
         this._bind(CAPTURE_NAME, () => this._control.capture());
+        this._bind(PAUSE_NAME, () => {
+            /* as for the turn box: the render's answer decides the tick */
+            delete this._written[`selected:${PAUSE_NAME}`];
+            this._control.togglePause();
+        });
         this._bind(DISPLAY_NAME, () => this._control.cycleDisplay());
         this._bind(HUD_SIZE_NAME, () => this._control.stepHudSize(1));
         this._bind(HUD_SMALLER_NAME, () => this._control.stepHudSize(-1));
@@ -501,10 +508,13 @@ class WazeClusterApp extends OnlineApp {
         this._renderHud();
     }
 
-    /* This fork's Head-up display section (English). */
+    /* This fork's Map display section (English). */
     _renderHud() {
         const c = this._control;
-        this._write(HEAD_HUD_NAME, 'Head-up display');
+        this._write(HEAD_HUD_NAME, 'Map display');
+        this._write(PAUSE_NAME, 'Pause map');
+        this._setEnabled(PAUSE_NAME, c.canPause());
+        this._setSelected(PAUSE_NAME, c.mapPaused() === true);
         this._write(DISPLAY_NAME, c.displayText());
         this._setEnabled(DISPLAY_NAME, c.canChangeDisplay());
         this._write(HUD_SIZE_NAME, c.hudLargerText());
