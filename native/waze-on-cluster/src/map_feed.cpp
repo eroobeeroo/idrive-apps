@@ -11,6 +11,8 @@
 
 namespace woc {
 
+const char *const MapFeed::kWaiting = "Waiting for the phone's map";
+
 namespace {
 
 /* The size of a target in the renderer's hello ("map:1088x480,panel:..."). */
@@ -85,6 +87,11 @@ void MapFeed::make_layer()
     /* The map area: all of the map slot's scene, the centred 1088x480 of a
      * whole-panel one, a fitted centre on the HUD. */
     crk::QuadRect q = quad(tw, th);
+    if (cfg_.rect.set() && cfg_.rect.fits(tw, th))
+        q = crk::QuadRect{cfg_.rect.x, cfg_.rect.y, cfg_.rect.w, cfg_.rect.h};
+    else if (cfg_.rect.set())
+        log_warn("render: map_rect %u,%u,%u,%u is outside %s (%ux%u); the map area instead", cfg_.rect.x,
+                 cfg_.rect.y, cfg_.rect.w, cfg_.rect.h, cfg_.target.c_str(), tw, th);
     /* Shown smaller than the decoded frame: the frame is scaled to the size
      * it is shown at (a multiple of 4 wide and high, as the renderer and
      * packed motion need), drawn 1:1 centred where the quad was. */
@@ -109,11 +116,12 @@ void MapFeed::make_layer()
     lo_.target = cfg_.target;
     lo_.klass = "content";
     lo_.contend = true;   /* the map takes the slot back from the stock map */
+    lo_.guide_hold = cfg_.guide_hold;
     lo_.x = (int)q.x;
     lo_.y = (int)q.y;
     lo_.w = q.w;
     lo_.h = q.h;
-    lo_.visible = live_ && !frozen_;
+    lo_.visible = live_ && !frozen_ && picture_ == Picture::Shown;
     refused_.clear();
     layer_state_ = "stalled";
     layer_reason_.clear();
@@ -227,6 +235,15 @@ bool MapFeed::set_target(const std::string &name)
     return true;
 }
 
+void MapFeed::set_guide_hold(bool hold)
+{
+    cfg_.guide_hold = hold;
+    if (layer_ && lo_.guide_hold != hold) {
+        lo_.guide_hold = hold;
+        client_.set(layer_, lo_);
+    }
+}
+
 void MapFeed::poll(int64_t now_ms)
 {
     client_.poll(now_ms);
@@ -287,14 +304,22 @@ void MapFeed::send_pending(int64_t now_ms)
     next_send_ms_ = now_ms + (cfg_.video.fps ? 1000 / (int64_t)cfg_.video.fps : 0);
 }
 
-void MapFeed::set_stream(bool live, bool frozen)
+void MapFeed::set_stream(bool live, bool frozen, Picture picture)
 {
-    if (live == live_ && frozen == frozen_)
+    if (live == live_ && frozen == frozen_ && picture == picture_)
         return;
-    log_info("render: CarPlay's cluster stream %s", !live ? "is not live" : frozen ? "froze" : "is live");
+    const char *line = !live                       ? "is not live"
+                       : frozen                    ? "froze"
+                       : picture == Picture::None  ? "is live, no frame yet"
+                       : picture == Picture::Blank ? "is live, its picture blank"
+                                                   : "is live, with a picture";
+    if (line != stream_line_)   /* frames after the stream ends change only the verdicts */
+        log_info("render: CarPlay's cluster stream %s", line);
+    stream_line_ = line;
     live_ = live;
     frozen_ = frozen;
-    const bool visible = live && !frozen;
+    picture_ = picture;
+    const bool visible = live && !frozen && picture == Picture::Shown;
     if (layer_ && lo_.visible != visible) {
         lo_.visible = visible;
         client_.set(layer_, lo_);
@@ -338,6 +363,9 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     s.hud_edge_fade_pct = cfg_.hud_edge_fade_pct;
     s.upload_cap_kb = cap_kb_;
     s.upload_reason = budget_reason_;
+    s.guide_hold = cfg_.guide_hold;
+    auto g = client_.guide_disabled.find(cfg_.target);
+    s.guide_disabled = client_.connected() && g != client_.guide_disabled.end() && g->second;
     char cap[96] = "";
     if (cap_kb_ && cap_kb_ < max_kb_)
         std::snprintf(cap, sizeof cap, ", upload cap %u KB/s", cap_kb_);
@@ -356,6 +384,13 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     } else if (!live_) {
         s.state = "idle";
         s.page = decode;
+    } else if (picture_ != Picture::Shown) {
+        s.state = "idle";   /* the layer hidden: the stock map shows */
+        s.page = decode;
+        s.reason = stream;
+        s.stream_reason = !stream.empty();
+        if (stream.empty() && picture_ == Picture::Blank)
+            s.reason = kWaiting;
     } else if (layer_state_ == "shown") {
         s.state = "showing";
         char p[400];

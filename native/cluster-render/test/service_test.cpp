@@ -18,7 +18,13 @@
  * ends the map fades out, is released and the stock map is shown again; the
  * stream back at once, the map is asked for again in the same scene as soon
  * as the KOMBI confirms the release; a target that does not take over stays parked, with no timeout, reported
- * as parked behind the stock HMI, and is shown when the stock content goes. */
+ * as parked behind the stock HMI, and is shown when the stock content goes.
+ * A hold of the guidance slot (slots.h): no client's target; held, with
+ * the box taken over and parked behind it, while the map is shown, and with
+ * the seat-belt panel parked there; released with the map and at stop; the
+ * map's layer choosing it with guide_hold, and a client without the field
+ * getting it. The mapping guard (guard.h) striking and disabling the hold
+ * on cluster restarts, never the map. */
 #include <poll.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -315,6 +321,246 @@ static void take_over_and_fall_back()
     r.port.stock_unmap(0x203, 0x01000401);
     r.pump(50);
     ok("the stock content gone: shown", ea.target["panel"] == "shown");
+}
+
+static const uint64_t kHmiMap = 0x01000300, kBox = 0x01000310, kGuide = 0x010004f1;
+
+/* The rig with a hold of the guidance slot following the map (slots.h), on
+ * a KOMBI that shows the HMI's map and its turn-by-turn box. */
+static void hold_rig(Rig &r)
+{
+    r.sc.targets[0].linger_ms = 0;
+    TargetSpec g;
+    g.name = "guide_0x105"; g.slot = 0x105; g.scene_id = kGuide; g.width = g.height = 16; g.linger_ms = 0;
+    g.take_over_stock = true; g.follows = "map"; g.take_over_contents = {kBox};
+    g.strike_limit = 2;   /* as load_holds makes it */
+    r.sc.targets.push_back(g);
+    r.start();
+    r.port.stock_map(0x100, kHmiMap);
+    r.port.stock_map(0x105, kBox);
+}
+
+static bool has(const std::string &text, const std::string &line)
+{
+    return text.find(line) != std::string::npos;
+}
+
+/* The box's map status in the guidance slot; -1: not mapped. */
+static int box_status(const Rig &r)
+{
+    const SlotInfo *box = r.port.row(0x105, kBox);
+    return box ? (int)box->map_status : -1;
+}
+
+/* The map shown by a's video layer, its frames never stalling. */
+static uint32_t show_map(Rig &r, cr::Client &a, const cr::LayerOptions &lo)
+{
+    cr::VideoOptions vo;
+    vo.stall_ms = 600000;
+    const uint32_t map = a.video(lo, vo);
+    const std::vector<uint8_t> f = atlas(1);
+    a.frame(map, f.data(), f.size(), 1);
+    r.pump(400);
+    return map;
+}
+
+/* A hold of the guidance slot following the map. */
+static void guide_hold()
+{
+    const uint64_t kBelt = 0x01000314;
+    Rig r;
+    hold_rig(r);
+    cr::Client a("waze", r.path);
+    Events ea;
+    ea.wire(a);
+    r.clients = {&a};
+    r.pump(50);
+    cr::LayerOptions gl;
+    gl.target = "guide_0x105";
+    a.effect(gl, cr::EffectOptions{"#version 100\nvoid main(){gl_FragColor=vec4(1.0);}", "", 0});
+    r.pump(20);
+    ok("hold: not one of the clients' targets, and no layer can go on it",
+       a.targets == "map:1088x480,panel:1920x720" && !ea.errors.empty() &&
+           ea.errors.back() == "layer: unknown target guide_0x105" && r.port.requests == 0);
+
+    cr::LayerOptions lo;
+    lo.target = "map";
+    lo.contend = true;
+    const uint32_t map = a.video(lo, cr::VideoOptions());
+    const std::vector<uint8_t> f = atlas(1);
+    a.frame(map, f.data(), f.size(), 1);
+    r.pump(400);
+    const SlotInfo *ours = r.port.row(0x105, kGuide), *box = r.port.row(0x105, kBox);
+    ok("the map shown: the hold shown in the guidance slot, the box parked behind it",
+       ea.target["map"] == "shown" && ours && ours->map_status == 1 && box && box->map_status == 3 &&
+           r.port.taken_over == std::vector<uint64_t>{kHmiMap, kBox});
+    ok("its scene never drawn, its state in no client's events",
+       r.gpu.graph("guide_0x105") && r.gpu.graph("guide_0x105")->visible().empty() && !ea.target.count("guide_0x105"));
+
+    lo.visible = false;
+    a.set(map, lo);
+    for (int k = 0; k < 100 && ea.target["map"] != "idle"; k++)
+        r.pump(5);
+    r.pump(20);
+    box = r.port.row(0x105, kBox);
+    ok("the map gone: the hold released with it, the box shown again",
+       ea.target["map"] == "idle" && !r.port.row(0x105, kGuide) && box && box->map_status == 1);
+
+    lo.visible = true;
+    a.set(map, lo);
+    a.frame(map, f.data(), f.size(), 2);
+    r.pump(4000);
+    ours = r.port.row(0x105, kGuide);
+    ok("the map back: held again", ea.target["map"] == "shown" && ours && ours->map_status == 1);
+    r.port.stock_map(0x105, kBelt);   /* the seat-belt panel parked behind ours, as the HMI keeps it */
+    r.pump(20);
+    ours = r.port.row(0x105, kGuide);
+    ok("the seat-belt panel parked there: still held, the panel never taken over",
+       ea.target["map"] == "shown" && ours && ours->map_status == 1 &&
+           r.port.taken_over == std::vector<uint64_t>{kHmiMap, kBox, kHmiMap, kBox});
+    r.svc->shutdown(r.now);
+    box = r.port.row(0x105, kBox);
+    ok("stop: the hold released with the map", !r.port.row(0x105, kGuide) && !r.port.row(0x100, 0x010004f0) &&
+                                                   box && box->map_status == 1);
+}
+
+/* The map's layers decide: guide_hold 0 releases the hold and takes nothing
+ * over, 1 holds again; a client that never sends the field gets the hold. */
+static void guide_hold_choice()
+{
+    Rig r;
+    hold_rig(r);
+    cr::Client a("waze", r.path);
+    Events ea;
+    ea.wire(a);
+    r.clients = {&a};
+    r.pump(50);
+    cr::LayerOptions lo;
+    lo.target = "map";
+    lo.contend = true;
+    lo.guide_hold = false;
+    const uint32_t map = show_map(r, a, lo);
+    r.pump(4000);
+    ok("guide_hold 0: the map shown, the hold never asked for, the box shown, only the stock map taken over",
+       ea.target["map"] == "shown" && !r.port.row(0x105, kGuide) && box_status(r) == 1 &&
+           r.port.taken_over == std::vector<uint64_t>{kHmiMap});
+    ok("the status names the layer's guide_hold 0",
+       has(r.svc->server().status_text(r.now), "layer 1 video of waze on map, content z 0, guide_hold 0: shown"));
+
+    lo.guide_hold = true;
+    a.set(map, lo);
+    r.pump(400);
+    const SlotInfo *ours = r.port.row(0x105, kGuide);
+    ok("guide_hold 1: held, the box taken over and parked behind it",
+       ours && ours->map_status == 1 && box_status(r) == 3 &&
+           r.port.taken_over == std::vector<uint64_t>{kHmiMap, kBox});
+
+    lo.guide_hold = false;
+    a.set(map, lo);
+    r.pump(400);
+    ok("guide_hold 0 again: released, the box shown, the map still shown",
+       !r.port.row(0x105, kGuide) && box_status(r) == 1 && ea.target["map"] == "shown");
+    r.pump(40000);
+    ok("and no take-over of the box since", r.port.taken_over.size() == 2 && !r.port.row(0x105, kGuide));
+    a.drop(map);
+    r.pump(400);
+
+    Raw old(r.path);
+    old.send("{\"op\":\"hello\",\"app\":\"old\",\"proto\":1}");
+    old.send("{\"op\":\"layer\",\"ref\":1,\"target\":\"map\",\"kind\":\"effect\",\"fs\":\"x\",\"contend\":1}");
+    r.pump(4000);
+    ours = r.port.row(0x105, kGuide);
+    ok("a client that never sends guide_hold: the map shown and held",
+       r.svc->slots().status(0).state == TargetState::Shown && ours && ours->map_status == 1 && box_status(r) == 3);
+}
+
+/* The KOMBI restarting: our mappings dropped and the display service gone,
+ * then back. */
+static void kombi_restart(Rig &r)
+{
+    r.port.watchdog();
+    r.port.set_up(false);
+    r.pump(100);
+    r.port.set_up(true);
+}
+
+/* The mapping guard (guard.h) in the service: a cluster restart right after
+ * the hold's mapping strikes the hold, also while it is asked for in the
+ * tick its map is shown; two disable it, which is then never asked for,
+ * also after a service restart, and the map's client is told; a restart
+ * long after any mapping is no strike; the map (its strike limit the
+ * default, as main.cpp leaves it) only has its strikes logged; a client's
+ * guard_reset is an unknown op. */
+static void mapping_guard()
+{
+    const std::string path = "/tmp/crs-guard-" + std::to_string(getpid()) + ".txt";
+    unlink(path.c_str());
+    Rig r;
+    r.sc.guard_path = path;
+    r.sc.version = "0.3.7";
+    r.sc.boot_id = "boot-1";
+    hold_rig(r);
+    cr::Client a("waze", r.path);
+    Events ea;
+    ea.wire(a);
+    r.clients = {&a};
+    r.pump(50);
+    cr::LayerOptions lo;
+    lo.target = "map";
+    lo.contend = true;
+    const uint32_t map = show_map(r, a, lo);
+    const SlotInfo *ours = r.port.row(0x105, kGuide);
+    ok("guard: the map and the hold shown", ea.target["map"] == "shown" && ours && ours->map_status == 1);
+
+    kombi_restart(r);
+    std::string text = r.svc->guard().status_text();
+    ok("a cluster restart 0.3 s after the hold's mapping: a strike against the hold, none against the map",
+       text == "guard: guide_0x105 0x105 0x10004f1 0: 1 strike\n");
+    for (int k = 0; k < 1000 && !r.port.pending.count(kGuide); k++)
+        r.pump(5);
+    ok("both asked for again: the map shown, the hold asked for in the same tick",
+       r.port.pending.count(kGuide) && ea.target["map"] == "shown");
+    kombi_restart(r);
+    r.pump(5000);
+    text = r.svc->server().status_text(r.now);
+    ok("a second, before the hold is shown: the hold disabled, in the status; the map shown again without it, "
+       "the box shown",
+       has(text, "guard: guide_0x105 0x105 0x10004f1 0: disabled, 2 strikes\n") && ea.target["map"] == "shown" &&
+           !r.port.row(0x105, kGuide) && box_status(r) == 1);
+
+    r.pump(15000);
+    kombi_restart(r);
+    ok("a restart 15 s after the last mapping: no strike",
+       r.svc->guard().status_text() == "guard: guide_0x105 0x105 0x10004f1 0: disabled, 2 strikes\n");
+    for (int k = 0; k < 3; k++) {
+        r.pump(3000);
+        kombi_restart(r);
+    }
+    r.pump(3000);
+    text = r.svc->guard().status_text();
+    ok("restarts right after the map's mapping: its strikes logged, the map never disabled",
+       has(text, "guard: map 0x100 0x10004f0 0: 3 strikes\n") && ea.target["map"] == "shown");
+
+    r.svc.reset();
+    r.start();
+    const std::vector<uint8_t> f = atlas(2);
+    for (int k = 0; k < 60; k++) {
+        a.frame(map, f.data(), f.size(), 2 + k);
+        r.pump(50);
+    }
+    ok("a service restart: the hold still disabled, the map shown without it",
+       has(r.svc->server().status_text(r.now), "guard: guide_0x105 0x105 0x10004f1 0: disabled, 2 strikes") &&
+           ea.target["map"] == "shown" && !r.port.row(0x105, kGuide));
+
+    ok("the map's client told the hold is disabled", a.guide_disabled["map"]);
+    Raw reset(r.path);
+    reset.send("{\"op\":\"hello\",\"app\":\"reset\"}");
+    reset.send("{\"op\":\"guard_reset\"}");
+    r.pump(2000);
+    ok("guard_reset from a client: an unknown op, the hold still disabled",
+       has(reset.events(), "unknown op") && has(r.svc->guard().status_text(), "disabled, 2 strikes") &&
+           !r.port.row(0x105, kGuide));
+    unlink(path.c_str());
 }
 
 int main()
@@ -743,6 +989,9 @@ int main()
     ok("the status names the targets and the layers",
        text.find("target map") != std::string::npos && text.find("image of overlay") != std::string::npos);
     take_over_and_fall_back();
+    guide_hold();
+    guide_hold_choice();
+    mapping_guard();
     std::printf(failures ? "%d FAILED\n" : "all ok\n", failures);
     return failures ? 1 : 0;
 }

@@ -163,9 +163,15 @@ std::string VideoProducer::probe_report() const
     }
     {
         std::lock_guard<std::mutex> lock(frame_mutex_);
-        char line[160];
-        std::snprintf(line, sizeof line, "rounding: %u bits a level on the decoder thread, %lld us a frame (max %lld)\n",
-                      cfg_.tex_level_bits, (long long)round_us_.mean(), (long long)round_us_.max);
+        char line[320];
+        std::snprintf(line, sizeof line,
+                      "rounding: %u bits a level on the decoder thread, %lld us a frame (max %lld)\n"
+                      "backlog: the oldest packet waiting %lld ms, the longest wait %lld ms; %llu frames decoded "
+                      "without a picture to catch up%s\n",
+                      cfg_.tex_level_bits, (long long)round_us_.mean(), (long long)round_us_.max,
+                      (long long)(queue_.oldest_wait_us() / 1000), (long long)(backlog_.max_wait_us() / 1000),
+                      (unsigned long long)backlog_.skipped_total(),
+                      backlog_.behind(cld::now_ms()) ? "; the decoder is behind the stream" : "");
         r += line;
     }
     return r + probe_.report();
@@ -182,7 +188,14 @@ void VideoProducer::receive(const uint8_t *data, size_t len, int source)
             log_warn("%s: receive thread left at its priority (nice %d: %s)", source_name(source), kReceiveNice,
                      std::strerror(errno));
     }
-    queue_.push(data, len, source);
+    /* A frame's packets share their RTP timestamp. */
+    bool frame_start = false;
+    if (len >= 12 && (data[0] & 0xc0) == 0x80) {
+        const int64_t ts = (int64_t)data[4] << 24 | data[5] << 16 | data[6] << 8 | data[7];
+        frame_start = ts != rtp_ts_[source];
+        rtp_ts_[source] = ts;
+    }
+    queue_.push(data, len, source, frame_start);
 }
 
 void VideoProducer::decode_loop()
@@ -195,6 +208,12 @@ void VideoProducer::decode_loop()
 
 void VideoProducer::feed_datagram(const PacketQueue::Packet &p)
 {
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        const std::string line = backlog_.packet(cld::now_ms(), p.waited_us);
+        if (!line.empty())
+            log_warn("%s", line.c_str());
+    }
     const uint8_t *data = p.data.data();
     const size_t len = p.data.size();
     /* RTP v2 starts 10xxxxxx; Annex-B starts with a zero byte. */
@@ -267,7 +286,7 @@ void VideoProducer::on_nal(const uint8_t *data, size_t len, bool end_of_au)
 
 bool VideoProducer::start_decoder(std::string *err)
 {
-    if (!decoder_.init(cfg_.drm_device.c_str(), cfg_.tex_width, cfg_.tex_height, err)) {
+    if (!decoder_.init(cfg_.drm_device.c_str(), cfg_.tex_width, cfg_.tex_height, err, cfg_.src_crop)) {
         std::lock_guard<std::mutex> flock(frame_mutex_);
         last_err_ = *err;
         decode_errs_++;
@@ -280,7 +299,8 @@ bool VideoProducer::start_decoder(std::string *err)
 void VideoProducer::decode(const uint8_t *data, size_t len, bool end_of_au)
 {
     std::string derr;
-    const bool ok = decoder_.feed(data, len, [this](const VideoFrame &f) { on_frame(f); }, &derr, end_of_au);
+    const bool ok = decoder_.feed(data, len, [this](const VideoFrame &f) { on_frame(f); }, &derr, end_of_au,
+                                  !(packet_ && packet_->later_frame));
     const bool decoding = decoder_.decoding();
     if (ok && decoding == decoding_)
         return;
@@ -301,6 +321,17 @@ void VideoProducer::decode(const uint8_t *data, size_t len, bool end_of_au)
 
 void VideoProducer::on_frame(const VideoFrame &f)
 {
+    if (!f.atlas) {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        const std::string line = health_.frame(cld::now_ms(), f.corrupted, gaps_.after_loss());
+        if (!line.empty())
+            log_info("%s", line.c_str());
+        backlog_.skipped();
+        if (f.w == cfg_.tex_width && f.h == cfg_.tex_height)
+            last_frame_ms_ = now_us() / 1000;
+        decoded_total_++;
+        return;
+    }
     /* Rounded here, in place, on the decoder thread, so neither the main loop
      * nor the renderer spends time on it; the decoder's buffer then becomes
      * the newest frame and the replaced one goes back to the decoder. */
@@ -348,16 +379,22 @@ bool VideoProducer::take(std::vector<uint8_t> *frame, uint64_t *id)
     return true;
 }
 
-void VideoProducer::set_live(bool on)
+void VideoProducer::set_live(bool on, int64_t now_ms)
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
-    freeze_.live(on);
+    freeze_.live(on, now_ms);
 }
 
 bool VideoProducer::frozen(int64_t now_ms) const
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     return freeze_.frozen(now_ms);
+}
+
+Picture VideoProducer::picture(int64_t now_ms) const
+{
+    std::lock_guard<std::mutex> lock(frame_mutex_);
+    return freeze_.picture(now_ms);
 }
 
 uint32_t VideoProducer::decode_errors(std::string *last) const
@@ -367,28 +404,30 @@ uint32_t VideoProducer::decode_errors(std::string *last) const
     return decode_errs_;
 }
 
-bool VideoProducer::minute(int64_t now_ms, FrameTally::Minute *m, StreamHealth::Minute *s, uint64_t *overflows)
+bool VideoProducer::minute(int64_t now_ms, FrameTally::Minute *m, StreamHealth::Minute *s, Backlog::Minute *b,
+                           uint64_t *overflows)
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     if (!tally_.take(now_ms, m))
         return false;
     *s = health_.take_minute();
+    *b = backlog_.take_minute();
     const uint64_t o = queue_.overflows();
     *overflows = o - overflows_seen_;
     overflows_seen_ = o;
     return true;
 }
 
-std::string VideoProducer::stream_reason(const ResyncState &resync) const
+std::string VideoProducer::stream_reason() const
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
-    return health_.reason(resync);
+    return health_.reason();
 }
 
-std::string VideoProducer::stream_detail(const ResyncState &resync) const
+std::string VideoProducer::stream_detail() const
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
-    return health_.detail(resync);
+    return health_.detail();
 }
 
 bool VideoProducer::stream_lost() const

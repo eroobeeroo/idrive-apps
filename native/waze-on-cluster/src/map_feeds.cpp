@@ -86,7 +86,7 @@ std::unique_ptr<MapFeed> MapFeeds::make(const std::string &target)
     FeedConfig fc = base_;
     fc.target = target;
     std::unique_ptr<MapFeed> f(new MapFeed(fc));
-    f->set_stream(live_, frozen_);
+    f->set_stream(live_, frozen_, picture_);
     return f;
 }
 
@@ -170,12 +170,20 @@ void MapFeeds::offer(std::vector<uint8_t> *atlas, uint64_t id, int64_t now_ms)
         feeds_[0]->offer(atlas, id, now_ms);
 }
 
-void MapFeeds::set_stream(bool live, bool frozen)
+void MapFeeds::set_stream(bool live, bool frozen, Picture picture)
 {
     live_ = live;
     frozen_ = frozen;
+    picture_ = picture;
     for (auto &f : feeds_)
-        f->set_stream(live, frozen);
+        f->set_stream(live, frozen, picture);
+}
+
+void MapFeeds::set_guide_hold(bool hold)
+{
+    base_.guide_hold = hold;
+    for (auto &f : feeds_)
+        f->set_guide_hold(hold);
 }
 
 FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream) const
@@ -193,6 +201,7 @@ FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream
             s.state = "showing";
             s.page = o.page;
         }
+        s.guide_disabled = s.guide_disabled || o.guide_disabled;
         if (o.state != feeds_[0]->status(decode, stream).state)
             s.page += " · " + name + " " + o.state + (o.reason.empty() ? "" : ": " + o.reason);
     }
@@ -201,6 +210,7 @@ FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream
     s.hud_offset_x = base_.hud_offset_x;
     s.hud_offset_y = base_.hud_offset_y;
     s.hud_edge_fade_pct = base_.hud_edge_fade_pct;
+    s.guide_hold = base_.guide_hold;
     return s;
 }
 

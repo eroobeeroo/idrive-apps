@@ -39,7 +39,7 @@
  * subscribes gets the scene whole, as last flushed, from the RAMSES client
  * (VERIFIED in the emulator: sent at the subscription), so a video writes
  * the tiles that differ from it, not the whole frame. That resend is
- * charged to the byte budget when the scene is asked for (resent()). */
+ * charged to the byte budget when the display takes the scene (resent()). */
 #ifndef CRS_COMPOSITOR_H
 #define CRS_COMPOSITOR_H
 
@@ -175,7 +175,7 @@ private:
         int64_t fade_ms = 0, applied_ms = 0;
         bool fading_out = false;
         std::vector<uint32_t> last_drawn;
-        bool last_contend = false;
+        bool last_contend = false, last_guide_hold = true;
     };
 
     uint32_t admit(uint64_t owner, int target, size_t pixel_bytes, std::string *err);

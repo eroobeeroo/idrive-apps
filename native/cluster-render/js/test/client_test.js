@@ -58,10 +58,10 @@ async function main() {
     ovl.connect();
     ok('hello: ready, backend and targets', await until(() => ew.ready && eo.ready, 2000) &&
         waze.backend === 'host' && waze.targets.indexOf('map:1088x480') === 0);
-    ok('the budget event: 6000 KB/s of 6000', await until(() => ew.budget, 1000) &&
-        ew.budget.cap === 6000 && ew.budget.max === 6000);
+    ok('the budget event: 5500 KB/s of 5500', await until(() => ew.budget, 1000) &&
+        ew.budget.cap === 5500 && ew.budget.max === 5500);
 
-    const map = waze.video({ target: 'map', contend: true });
+    const map = waze.video({ target: 'map', contend: true, stall_ms: 1000 });
     ok('a video layer without frames is stalled', await until(() => ew.layer[map] === 'stalled', 1000));
     const atlas = Buffer.alloc(waze.frameBytes(map), 128);
     ok('a frame of the wrong size is refused here', !waze.frame(map, Buffer.alloc(10), 1));
@@ -133,13 +133,13 @@ async function main() {
 
     clearInterval(feed);
     ok('frames stopping: the video is stalled after its stall time',
-        await until(() => ew.layer[map] === 'stalled', 8000));
+        await until(() => ew.layer[map] === 'stalled', 3000));
     let opens = 0;
     const open = waze._open.bind(waze);
     waze._open = () => { opens++; open(); };
     waze.close();
     waze.connect();   /* in the same tick: the old socket's close comes later */
-    await sleep(1500);
+    await sleep(750);
     ok('closed and connected again at once: one connection, ready', opens === 1 && waze.ready && waze.sock);
     waze.close();
     ovl.close();

@@ -14,6 +14,10 @@
  *     reused system-memory surface, and the CPU packs its planes into one
  *     reused atlas (pack_nv12_atlas). Nothing is converted to colour on MGU:
  *     the cluster's GPU does that (the map shader).
+ * A frame fed without a picture (feed's picture false, to catch up with a
+ * backlog) is decoded as every frame must be, for the frames that refer to
+ * it, and waited for (its decode task only), but VPP and the packing are
+ * skipped: it comes out with no atlas.
  * Frames come out in decoding order, each as soon as it is decoded. A stream
  * with B frames needs display order: the first B slice switches the decoder
  * to it at the next SPS, and B frames before that come out of order.
@@ -41,10 +45,14 @@
  *     own 1920x900, 40 of 40 atlases equal ffmpeg's decoded planes byte for
  *     byte, and the decoder also scales it to 1088x480;
  *   - the NAL framing by test/nal_reader_test.cpp.
- * UNVERIFIED (CAR-ONLY): the hardware library's VA-API path (render node,
- * VA display, GPU surfaces, opaque decode-to-VPP), that it honours
- * DecodedOrder as the software library does, whether the phone's stream has
- * B frames, and throughput. The decoder has never run on the GPU. */
+ * On the car it decodes with the MSDK hardware library through VA-API
+ * (render node, VA display, GPU surfaces, opaque decode-to-VPP).
+ * UNVERIFIED (CAR-ONLY): that it honours DecodedOrder as the software
+ * library does, and whether the phone's stream has B frames. Frames
+ * without a picture (decode synced alone, no VPP) are checked against
+ * neither library, nor is src_crop: VPP taking each picture's replaced
+ * crop, and the restart when a picture's rect after the crop differs from
+ * the one VPP was set up for. */
 #ifndef WOC_DECODER_MSDK_H
 #define WOC_DECODER_MSDK_H
 
@@ -55,6 +63,8 @@
 #include <string>
 #include <vector>
 
+#include "source_crop.h"
+
 namespace woc {
 
 struct VideoFrame {
@@ -63,7 +73,7 @@ struct VideoFrame {
     /* Its atlas, w x atlas_height(h) bytes, the decoder's buffer. The sink
      * may change it in place, or swap it for another buffer (the decoder
      * sizes what it gets back for the next frame). Valid until the next
-     * feed/flush/shutdown. */
+     * feed/flush/shutdown. Null for a frame decoded without a picture. */
     std::vector<uint8_t> *atlas;
 };
 
@@ -78,15 +88,21 @@ public:
     Decoder &operator=(const Decoder &) = delete;
 
     /* dev: the render node, "/dev/dri/renderD128". out_w/out_h: output size,
-     * even, or both 0 for the stream's own size. */
-    bool init(const char *dev, uint32_t out_w, uint32_t out_h, std::string *err);
+     * even, or both 0 for the stream's own size (the crop's, when it applies).
+     * crop: the part of a picture of its size that VPP scales to the output
+     * (source_crop.h), decided per picture; any other picture is used
+     * whole. */
+    bool init(const char *dev, uint32_t out_w, uint32_t out_h, std::string *err,
+              const SourceCrop &crop = SourceCrop());
 
     /* Feeds Annex-B bytes, split anywhere; cb gets each decoded frame.
      * end_of_au: the bytes end exactly at the end of an access unit (one
      * whole frame per call), so that frame is decoded now instead of when the
-     * next one starts. Returns false, with *err, when an access unit failed
+     * next one starts. picture false: the frames that come out of this call
+     * have no atlas. Returns false, with *err, when an access unit failed
      * to decode or a sequence could not start, or before init(). */
-    bool feed(const uint8_t *data, size_t len, const FrameSink &cb, std::string *err, bool end_of_au = false);
+    bool feed(const uint8_t *data, size_t len, const FrameSink &cb, std::string *err, bool end_of_au = false,
+              bool picture = true);
 
     /* End of stream: decodes what is buffered and delivers every remaining
      * frame. The next feed() starts a new stream at its first SPS. */
