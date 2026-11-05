@@ -106,14 +106,14 @@ int main()
 
     ok("on: a hold of 0x105 following the map, never drawn",
        load({"guide_hold=1"}, &t, &err) && t.size() == 2 && t[1].name == "guide_0x105" && t[1].slot == 0x105 &&
-           t[1].scene_id == 0x010004f1 && t[1].follows == "map,panel" && t[1].take_over_stock && t[1].linger_ms == 0 &&
+           t[1].scene_id == 0x010004f1 && t[1].follows == "map" && t[1].take_over_stock && t[1].linger_ms == 0 &&
            t[1].width == 16 && t[1].height == 16 && t[1].content_class == 0 && t[1].strike_limit == 2 &&
            t[0].strike_limit == 0 &&
            t[1].take_over_contents == std::vector<uint64_t>{0x01000310});
     ok("auto: one hold whose slot is 0x105 or 0x103 from the slot table, with guide_scene_id, following the map",
        load({"guide_hold=1", "guide_slots=auto"}, &t, &err) && t.size() == 2 && t[1].name == "guide_auto" &&
            t[1].slot == 0 && t[1].table_slots == std::vector<uint64_t>{0x105, 0x103} &&
-           t[1].scene_id == 0x010004f1 && t[1].follows == "map,panel" &&
+           t[1].scene_id == 0x010004f1 && t[1].follows == "map" &&
            t[1].take_over_stock && t[1].strike_limit == 2 &&
            t[1].take_over_contents == std::vector<uint64_t>{0x01000310} && err.empty());
     ok("a slot id: no slot from the table", load({"guide_hold=1"}, &t, &err) && t[1].table_slots.empty());

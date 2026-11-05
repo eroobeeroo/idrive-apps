@@ -101,8 +101,7 @@ bool load_holds(const HoldSettings &cfg, const std::vector<uint64_t> &allowed, s
         t.width = t.height = 16;
         t.linger_ms = 0;
         t.take_over_stock = true;
-        /* the map and the whole panel: over either, the HMI's guidance box would show through as a dark box */
-        t.follows = "map,panel";
+        t.follows = "map";
         t.take_over_contents = takes;
         t.strike_limit = 2;
         for (const std::vector<TargetSpec> *v : {targets, &holds})

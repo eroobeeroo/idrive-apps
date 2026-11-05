@@ -210,11 +210,10 @@ cluster is offered, and what differs is in "iDrive 8".
   goes at once. A slot the display takes is gone without a fade, and so is
   everything on SIGTERM.
 - **Guide hold** (iDrive 7, `guide_hold = 1`, the default). While `map`
-  or `panel` is shown, and only then, the service holds the slot of the stock HMI's
+  is shown, and only then, the service holds the slot of the stock HMI's
   CarPlay maneuver panel (content 0x01000310, class 0) with an empty 16x16
   scene of its own, never drawn, so the box is hidden on the cluster while
-  the map or a whole-panel layout shows (over the panel it showed as a
-  dark box right of centre). The box is in 0x105 on one car and in 0x103 on another,
+  the map shows. The box is in 0x105 on one car and in 0x103 on another,
   whose KOMBI reports 0x105 disabled and empty (both VERIFIED on the car).
   With `guide_slots = auto`, the default, the slot is the one the slot
   table reports the box in, or before the box shows, the one the HMI

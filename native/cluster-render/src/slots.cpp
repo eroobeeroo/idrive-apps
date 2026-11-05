@@ -215,32 +215,10 @@ void SlotManager::set_guard(Guard *g)
         t_[i].disabled = g->disabled(specs_[i]);
 }
 
-/* A hold's TargetSpec::follows, a comma-separated list of target names. */
-static std::vector<std::string> follow_list(const TargetSpec &t)
-{
-    std::vector<std::string> out;
-    size_t from = 0;
-    while (from <= t.follows.size()) {
-        const size_t comma = t.follows.find(',', from);
-        const std::string name = t.follows.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
-        if (!name.empty())
-            out.push_back(name);
-        if (comma == std::string::npos)
-            break;
-        from = comma + 1;
-    }
-    return out;
-}
-static bool follows(const TargetSpec &t, const std::string &name)
-{
-    const std::vector<std::string> l = follow_list(t);
-    return std::find(l.begin(), l.end(), name) != l.end();
-}
-
 bool SlotManager::hold_disabled(int target) const
 {
     for (size_t i = 0; i < specs_.size(); i++)
-        if (t_[i].disabled && follows(specs_[i], specs_[target].name))
+        if (t_[i].disabled && specs_[i].follows == specs_[target].name)
             return true;
     return false;
 }
@@ -257,24 +235,14 @@ void SlotManager::follow(int64_t now_ms)
         Target &t = t_[i];
         if (specs_[i].follows.empty())
             continue;
-        /* the targets it follows (a list): held while any of them is shown, unless one of them that is
-         * shown or wanted has layers that decline it (guide_hold 0) */
-        bool any_shown = false, declined = false;
-        for (const std::string &name : follow_list(specs_[i])) {
-            const int j = index(name);
-            if (j < 0)
-                continue;
-            const bool on = t_[j].status.state == TargetState::Shown;
-            any_shown = any_shown || on;
-            if ((on || t_[j].wanted) && !t_[j].guide_hold)
-                declined = true;
-        }
+        const int lead = index(specs_[i].follows);
+        const bool declined = lead >= 0 && !t_[lead].guide_hold;
         if (declined != t.declined)
             log_info("target %s: %s", specs_[i].name.c_str(),
                      declined ? "not held: a layer of the target it follows has guide_hold 0"
                               : "held again while the target it follows is shown");
         t.declined = declined;
-        const bool shown = any_shown && !declined;
+        const bool shown = lead >= 0 && t_[lead].status.state == TargetState::Shown && !declined;
 
         SlotInfo row;
         const uint64_t y = yield_to(i, &row);
