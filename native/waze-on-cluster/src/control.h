@@ -4,10 +4,13 @@
  * `waze-on-cluster run`) and the tool (README.md "Using it").
  *
  *   owner -> tool  {"cmd":"start","target":"sail"|"map"|"panel"|"hud"|"map+hud"}
- *                  {"cmd":"hud","hud_width_pct":"0"|"20".."100"}  the HUD map's size
+ *                  {"cmd":"hud","hud_width_pct":"0"|"20".."100"}  the HUD map's size (this fork)
  *                  {"cmd":"hud","hud_x":"-800".."800","hud_y":...}  where it is, from the centre
  *                  {"cmd":"hud","hud_edge_fade_pct":"0".."30"}  its edges feathered (0: off)
- *   tool -> owner  {"ev":"status",...}  {"ev":"log","line":...}
+ *                  {"cmd":"guide","hide":0|1}  BMW's turn box hidden or not (guide_setting.h)
+ *   tool -> owner  {"ev":"status",...,"hide_bmw_guidance":0|1,"guide_disabled":0|1,
+ *                                  "hud_width_pct","hud_x","hud_y","hud_edge_fade_pct"}
+ *                  {"ev":"log","line":...}
  *
  * One connection is the owner; a second one is told "busy" and closed. */
 #ifndef WOC_CONTROL_H
@@ -21,6 +24,11 @@ namespace woc {
 /* A flat JSON object of string and number values, as the protocol uses. */
 bool parse_flat_json(const std::string &line, std::map<std::string, std::string> *out);
 std::string json_escape(const std::string &s);
+
+/* content and a newline in the file name beside fifo_path, in the render's
+ * own RuntimeDirectory, by rename, mode 0644: status.json and probe.txt,
+ * which the remote diagnostics read without taking the owner slot. */
+void write_sibling_file(const std::string &fifo_path, const char *name, const std::string &content);
 
 class Control {
 public:

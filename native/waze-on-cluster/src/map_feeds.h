@@ -8,7 +8,7 @@
  * for, held, taken over and released on its own, within the one upload
  * budget the renderer shares between all its clients. A frame goes to the
  * first feed without a copy and to the second as a copy. The stream's
- * liveness and freeze go to every feed.
+ * liveness, freeze and picture, and the guide hold, go to every feed.
  *
  * The app sees one status: its target is the spec ("map+hud"), its state the
  * first feed's unless another one errs or the first is not showing while
@@ -63,7 +63,10 @@ public:
     void poll(int64_t now_ms);
 
     void offer(std::vector<uint8_t> *atlas, uint64_t id, int64_t now_ms);
-    void set_stream(bool live, bool frozen);
+    void set_stream(bool live, bool frozen, Picture picture);
+    /* The layers' guide_hold (BMW's turn box hidden while the map shows),
+     * kept for a feed made later. */
+    void set_guide_hold(bool hold);
 
     FeedStatus status(const std::string &decode, const std::string &stream = std::string()) const;
     void request_report();
@@ -80,6 +83,7 @@ private:
     std::vector<std::unique_ptr<MapFeed>> feeds_;
     std::vector<uint8_t> copy_;
     bool live_ = false, frozen_ = false;
+    Picture picture_ = Picture::None;
 };
 
 }  // namespace woc

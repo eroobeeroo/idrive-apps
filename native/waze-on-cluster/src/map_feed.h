@@ -10,9 +10,10 @@
  * The renderer draws every frame the way waze-on-cluster always has (one
  * persistent R8 atlas written in changed tiles, packed fast motion, the
  * frame clock, newest frame only) within the budget all its clients share,
- * and maps the slot from the first frame. The layer is visible while
- * CarPlay's cluster stream is live and not frozen (set_stream): hidden, the
- * renderer lets the slot go and the stock map comes back. stall_ms, which
+ * and maps the slot from the first frame the visible layer has. The layer
+ * is visible while CarPlay's cluster stream is live, not frozen and shows a
+ * picture (set_stream, freeze_watch.h): hidden, the renderer keeps taking
+ * its frames but lets the slot go, and the stock map comes back. stall_ms, which
  * releases the slot once the frames stop that long, is only a backstop,
  * since how often a static map sends a frame depends on the phone (one about
  * every ten seconds, another about 30 a second). Frames handed
@@ -20,12 +21,13 @@
  * reconnects by itself and the next frame shows.
  *
  * The app's status line follows the stream, the layer and its target: idle
- * until the first frame or while the stream is not live, frozen while the
- * stream is, starting while the slot is asked for or held by the stock map
- * and while the renderer starts, showing with the frames handed over a
- * second, error when the renderer refused the layer or stays unreachable.
- * Showing, and idle while the stream is live, carry the stream's own reason
- * (stream_health.h: the stream lost) when it has one. */
+ * until the first frame or while the stream is not live, idle with kWaiting
+ * while the stream's picture is blank, frozen while the stream is, starting
+ * while the slot is asked for or held by the stock map and while the
+ * renderer starts, showing with the frames handed over a second, error when
+ * the renderer refused the layer or stays unreachable. Showing, and idle
+ * while the stream is live, carry the stream's own reason (stream_health.h:
+ * the stream lost) when it has one, in place of kWaiting. */
 #ifndef WOC_MAP_FEED_H
 #define WOC_MAP_FEED_H
 
@@ -36,6 +38,8 @@
 #include "atlas_scale.h"
 #include "cluster_render/client.h"
 #include "map_geometry.h"
+#include "freeze_watch.h"
+#include "map_rect.h"
 
 namespace woc {
 
@@ -69,6 +73,8 @@ struct FeedConfig {
      * over this % of its height on every side (0: off, at most
      * kHudMaxEdgeFadePct) */
     unsigned hud_edge_fade_pct = 0;
+    MapRect rect;             /* where in the target; unset: the map area */
+    bool guide_hold = true;   /* the layer's guide_hold: BMW's turn box hidden while the map shows */
 };
 
 /* The status the Waze app shows (its render socket's "status" event), with
@@ -84,6 +90,8 @@ struct FeedStatus {
     unsigned hud_width_pct = 0;   /* the HUD map's size setting (0: the default) */
     int hud_offset_x = 0, hud_offset_y = 0;   /* and where it is moved to from the centre */
     unsigned hud_edge_fade_pct = 0;           /* and how far in its edges fade (0: off) */
+    bool guide_hold = true;
+    bool guide_disabled = false;   /* cluster-render's guard keeps the turn box's hold off */
 };
 
 /* Whether a status is worth a log line: its state, reason or target differs
@@ -106,6 +114,9 @@ private:
 
 class MapFeed {
 public:
+    /* The reason while the stream is live and its picture blank. */
+    static const char *const kWaiting;
+
     explicit MapFeed(const FeedConfig &cfg);
 
     /* Where the map goes from now on: a renderer target, or "sail" for the
@@ -126,6 +137,8 @@ public:
     uint32_t scaler_edge_fade() const { return scaler_.edge_fade(); }
     /* Whether the renderer has target `name` (true until connected). */
     bool knows(const std::string &name) const;
+    /* The layer's guide_hold from now on. */
+    void set_guide_hold(bool hold);
 
     int fd() const { return client_.fd(); }
     bool wants_write() const { return client_.wants_write(); }
@@ -137,9 +150,10 @@ public:
      * reachable. */
     void offer(std::vector<uint8_t> *atlas, uint64_t id, int64_t now_ms);
 
-    /* Whether CarPlay's cluster stream is live, and whether it is frozen:
-     * the layer is visible only while it is live and not frozen. */
-    void set_stream(bool live, bool frozen);
+    /* Whether CarPlay's cluster stream is live, whether it is frozen and
+     * what it has to show: the layer is visible only while it is live, not
+     * frozen and shows a picture. */
+    void set_stream(bool live, bool frozen, Picture picture);
 
     /* The status for the app, with decode the capture and decode part of
      * the line and stream why the picture is not whole (empty: it is). */
@@ -163,6 +177,8 @@ private:
     uint32_t layer_ = 0;
     cr::LayerOptions lo_;   /* the layer's options as last sent */
     bool live_ = false, frozen_ = false;
+    Picture picture_ = Picture::None;
+    const char *stream_line_ = nullptr;   /* the stream's state as last logged */
     std::string layer_state_ = "stalled", layer_reason_;
     std::string target_state_, holder_, target_reason_;
     unsigned cap_kb_ = 0, max_kb_ = 0;

@@ -12,6 +12,7 @@
  * rate, and how many whole and partial writes the default budget lets
  * through a second. */
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -178,19 +179,31 @@ static void test_plan()
     ok("the packed partial tile lands where it belongs", got.px == e.px);
 }
 
+/* xorshift64: random bytes eight at a time, for whole frames of noise. */
+static uint64_t xorshift(uint64_t *s)
+{
+    *s ^= *s << 13;
+    *s ^= *s >> 7;
+    *s ^= *s << 17;
+    return *s;
+}
+
 /* Random edits of random sizes, both formats: the plan written over the
  * previous frame always gives the new frame, and leaves alone every pixel it
  * does not cover. */
 static void test_random()
 {
     std::srand(12345);
+    uint64_t xs = 88172645463325252ull;
     bool all = true;
     for (int iter = 0; iter < 200 && all; iter++) {
         const uint32_t bpp = iter % 3 == 0 ? 1 : iter % 3 == 1 ? 3 : 4;   /* 1: the atlas */
         const uint32_t w = 1088, h = 480;
         Frame prev(w, h, bpp);
-        for (uint8_t &v : prev.px)
-            v = (uint8_t)std::rand();
+        for (size_t k = 0; k < prev.px.size(); k += 8) {
+            const uint64_t r = xorshift(&xs);
+            std::memcpy(&prev.px[k], &r, std::min<size_t>(8, prev.px.size() - k));
+        }
         Frame cur = prev;
         const int edits = std::rand() % 12;
         for (int i = 0; i < edits; i++) {
@@ -198,7 +211,7 @@ static void test_random()
             const uint32_t ew = 1 + std::rand() % (iter % 7 == 0 ? w : 90), eh = 1 + std::rand() % (iter % 7 == 0 ? h : 90);
             for (uint32_t yy = y; yy < y + eh && yy < h; yy++)
                 for (uint32_t xx = x; xx < x + ew && xx < w; xx++)
-                    cur.at(xx, yy)[std::rand() % bpp] ^= 0x5a;
+                    cur.at(xx, yy)[xorshift(&xs) % bpp] ^= 0x5a;
         }
         UploadPlan p = plan_upload(prev.px.data(), cur.px.data(), w, h, bpp, kTileSize, kTileSize);
         Frame tex = prev;
@@ -525,13 +538,13 @@ static void test_pacer()
                     (unsigned long long)rate);
     ok("pacer: 30 fps of whole frames keeps to the byte rate", bounded);
 
-    /* The default 6000 KB/s against raw writes: a whole 1088x480 atlas is
+    /* The default 5500 KB/s against raw writes: a whole 1088x480 atlas is
      * 783,360 B, and a partial write of 320 KB is about what the car's
      * synthetic motion wrote (8.2 MB/s at 26 updates a second). Offered at
      * 30 a second, counted over 20 s after the first 5 (past the starting
-     * allowance), whole writes go at 6000 x 1024 / 783360 = 7.8 a second,
-     * 320 KB ones at 6000 / 320 = 18.75. */
-    const uint64_t def = 6000 * 1024;
+     * allowance), whole writes go at 5500 x 1024 / 783360 = 7.2 a second,
+     * 320 KB ones at 5500 / 320 = 17.2. */
+    const uint64_t def = 5500 * 1024;
     for (uint64_t size : {uint64_t(783360), uint64_t(320 * 1024)}) {
         UploadPacer d(def, 250);
         int offered = 0, gone = 0;
@@ -545,9 +558,9 @@ static void test_pacer()
         }
         const double ups = gone / 20.0;
         char name[112];
-        std::snprintf(name, sizeof name, "pacer: 6000 KB/s passes %u KB writes at %.1f of %.1f a second",
+        std::snprintf(name, sizeof name, "pacer: 5500 KB/s passes %u KB writes at %.1f of %.1f a second",
                       (unsigned)(size / 1024), ups, offered / 20.0);
-        ok(name, size == 783360 ? ups >= 7.0 && ups <= 8.5 : ups >= 18.0 && ups <= 19.5);
+        ok(name, size == 783360 ? ups >= 6.5 && ups <= 7.8 : ups >= 16.5 && ups <= 18.0);
     }
 }
 
