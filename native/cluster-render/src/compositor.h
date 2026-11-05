@@ -63,8 +63,11 @@ enum class LayerState { Hidden, Stalled, Waiting, Shown, Suspended, Error };
 const char *layer_state_name(LayerState s);
 
 struct CompositorLimits {
-    uint32_t layers = 32;               /* across all clients */
-    uint32_t per_client = 8;
+    /* An app draws a layout or a page as many small effect layers (one short
+     * shader each over its own rectangle: what the KOMBI is known to run), so
+     * it needs dozens; one big shader for many pieces made the KOMBI restart. */
+    uint32_t layers = 96;               /* across all clients */
+    uint32_t per_client = 64;
     uint32_t videos = 2;                /* video layers: four atlases each, plus packing */
     uint64_t pixel_bytes = 16u << 20;   /* CPU copies of all images, videos, assets and meshes */
     uint32_t assets = 32;               /* across all clients */

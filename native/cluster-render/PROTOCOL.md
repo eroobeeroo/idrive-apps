@@ -46,6 +46,10 @@ lacks.
 | `drop` | `ref`: a layer, or an asset no layer samples (else refused: `asset in use`) |
 | `status` | — (answered by a `status` event) |
 
+A client has at most 64 layers and all clients together 96 (past either, a
+layer is refused with `too many layers`); a client has at most 16 assets, all
+clients 32.
+
 Layer fields (all optional):
 
 | Field | Default | Meaning |
