@@ -51,6 +51,10 @@
  *                                   the HUD map moved from its centre (HUD pixels): saved as
  *                                   "hud_offset_x / hud_offset_y = ..."; kept per profile too;
  *                                   hud-pos-reply carries ok/hud_x/hud_y/reason
+ *                  {"cmd":"hud-fade","hud_edge_fade_pct":0..30}
+ *                                   the HUD map's edges feathered (% of its height, 0: off):
+ *                                   saved as "hud_edge_fade_pct = ..."; kept per profile too;
+ *                                   hud-fade-reply carries ok/hud_edge_fade_pct/reason
  *                                   the HUD map's size, saved the same way as
  *                                   "hud_width_pct = ..." (0: the default box);
  *                                   hud-size-reply carries ok/hud_width_pct/reason
@@ -109,7 +113,8 @@ var FIFO = process.env.WOC_FIFO || '/run/waze-on-cluster/alt.h264';
 /* The local UDP sink for udp mode. Must match the render's udp_port
  * (waze-on-cluster.conf); the render listens on 127.0.0.1:UDP_PORT. */
 var UDP_PORT = process.env.WOC_UDP_PORT || '20557';
-var HUD_MAX_PCT = 85;   /* the widest HUD map size: wider is cut off at the HUD's edges */
+var HUD_MAX_PCT = 85;
+var HUD_MAX_FADE_PCT = 30;   /* the widest HUD edge fade, % of the map's height */   /* the widest HUD map size: wider is cut off at the HUD's edges */
 var SOCK = process.env.WOC_PATCH_SOCK || '/dev/shm/waze-on-cluster/patch.sock';
 var SOCK_GROUP = process.env.WOC_PATCH_GROUP || 'tm_oap_app';
 var MOUNT = process.env.WOC_MOUNT || '/bin/mount';
@@ -172,11 +177,17 @@ function offset(v) {
     var n = Number(v);
     return isFinite(n) && n === Math.floor(n) && n >= -800 && n <= 800 ? n : 0;
 }
+/* An edge fade setting as a whole number in 0..HUD_MAX_FADE_PCT (0 when unset or out of range). */
+function fadePct(v) {
+    var n = Number(v);
+    return isFinite(n) && n === Math.floor(n) && n >= 0 && n <= HUD_MAX_FADE_PCT ? n : 0;
+}
 /* The current settings, as the render starts with them. */
 function currentSettings() {
     var t = readSetting('target'), pct = Number(readSetting('hud_width_pct'));
     return { target: DISPLAY_TARGETS.indexOf(t) >= 0 ? t : 'map', hud_width_pct: isFinite(pct) ? Math.min(pct, HUD_MAX_PCT) : 0,
-        hud_x: offset(readSetting('hud_offset_x')), hud_y: offset(readSetting('hud_offset_y')) };
+        hud_x: offset(readSetting('hud_offset_x')), hud_y: offset(readSetting('hud_offset_y')),
+        hud_edge_fade_pct: fadePct(readSetting('hud_edge_fade_pct')) };
 }
 /* A change of key kept for the current profile too. */
 function rememberForProfile(key, value) {
@@ -1069,17 +1080,18 @@ function handle(line, sock) {
         var want = cur;
         if (saved && DISPLAY_TARGETS.indexOf(saved.target) >= 0) {
             want = { target: saved.target, hud_width_pct: Math.min(Number(saved.hud_width_pct) || 0, HUD_MAX_PCT),
-                hud_x: offset(saved.hud_x), hud_y: offset(saved.hud_y) };
+                hud_x: offset(saved.hud_x), hud_y: offset(saved.hud_y), hud_edge_fade_pct: fadePct(saved.hud_edge_fade_pct) };
             if (want.target !== cur.target) saveSetting('target', want.target, function () {});
             if (want.hud_width_pct !== cur.hud_width_pct) saveSetting('hud_width_pct', String(want.hud_width_pct), function () {});
             if (want.hud_x !== cur.hud_x) saveSetting('hud_offset_x', String(want.hud_x), function () {});
             if (want.hud_y !== cur.hud_y) saveSetting('hud_offset_y', String(want.hud_y), function () {});
+            if (want.hud_edge_fade_pct !== cur.hud_edge_fade_pct) saveSetting('hud_edge_fade_pct', String(want.hud_edge_fade_pct), function () {});
         } else {
             profiles[id] = cur;
             writeProfiles(profiles);
         }
         if (changed) log('driver profile ' + id + ': ' + want.target + (want.target === 'hud' ? ', HUD map ' + (want.hud_width_pct || 'standard') + (want.hud_width_pct ? ' %' : '') : '') + (saved ? '' : ' (first seen: the current settings kept for it)'));
-        try { sock.write(JSON.stringify({ ev: 'profile-reply', ok: true, id: id, known: !!saved, target: want.target, hud_width_pct: want.hud_width_pct, hud_x: want.hud_x, hud_y: want.hud_y }) + '\n'); } catch (e) {}
+        try { sock.write(JSON.stringify({ ev: 'profile-reply', ok: true, id: id, known: !!saved, target: want.target, hud_width_pct: want.hud_width_pct, hud_x: want.hud_x, hud_y: want.hud_y, hud_edge_fade_pct: want.hud_edge_fade_pct }) + '\n'); } catch (e) {}
         return;
     }
     if (msg.cmd === 'hud-size') {
@@ -1111,6 +1123,20 @@ function handle(line, sock) {
                 else log('HUD map position: ' + (hx || hy ? (hx >= 0 ? '+' : '') + hx + ', ' + (hy >= 0 ? '+' : '') + hy + ' px from the centre' : 'centred') + ' (saved for the next start)');
                 try { sock.write(JSON.stringify({ ev: 'hud-pos-reply', ok: !err2, hud_x: hx, hud_y: hy, reason: err2 ? err2.message : undefined }) + '\n'); } catch (e) {}
             });
+        });
+        return;
+    }
+    if (msg.cmd === 'hud-fade') {
+        var fp = Number(msg.hud_edge_fade_pct);
+        if (fadePct(fp) !== fp) {
+            try { sock.write(JSON.stringify({ ev: 'hud-fade-reply', ok: false, reason: 'HUD edge fade must be a whole number from 0 to ' + HUD_MAX_FADE_PCT + ' %' }) + '\n'); } catch (e) {}
+            return;
+        }
+        saveSetting('hud_edge_fade_pct', String(fp), function (err) {
+            if (!err) rememberForProfile('hud_edge_fade_pct', fp);
+            if (err) log('saving the HUD edge fade failed: ' + err.message);
+            else log('HUD map edge fade: ' + (fp ? fp + ' %' : 'off') + ' (saved for the next start)');
+            try { sock.write(JSON.stringify({ ev: 'hud-fade-reply', ok: !err, hud_edge_fade_pct: fp, reason: err ? err.message : undefined }) + '\n'); } catch (e) {}
         });
         return;
     }

@@ -149,7 +149,7 @@ async function main() {
     const buttons = Object.entries(components).filter(([, d]) => d.type === 'button');
     const xmlButtons = [...XML.matchAll(/<component id="(\d+)" type="button"/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(buttons.map(([id]) => id).sort(), xmlButtons, 'application.xml and uiDescription agree');
-    assert.deepStrictEqual(buttons.map(([, d]) => d.name).sort(), ['wocCapture', 'wocDisable', 'wocDisplay', 'wocEnable', 'wocHudCentre', 'wocHudDown', 'wocHudLeft', 'wocHudRight', 'wocHudSize', 'wocHudSmaller', 'wocHudUp', 'wocRestart']);
+    assert.deepStrictEqual(buttons.map(([, d]) => d.name).sort(), ['wocCapture', 'wocDisable', 'wocDisplay', 'wocEnable', 'wocHudCentre', 'wocHudDown', 'wocHudFade', 'wocHudLeft', 'wocHudRight', 'wocHudSize', 'wocHudSmaller', 'wocHudUp', 'wocRestart']);
     assert(!buttons.some(([, d]) => /^(Show|Stop)$/.test(d.rows[0].Text.value)), 'no Show or Stop button');
     /* The restart button ships hidden; it shows only while a patch is deferred. */
     assert.strictEqual(components['34'].properties.Visible.value, 0, 'wocRestart ships hidden');
@@ -177,7 +177,7 @@ async function main() {
         await until('page shows the map', () => status.text === `Showing: ${RENDER_PAGE} — ${RENDER_FPS}`);
         assert(!logs.some((l) => /^error/.test(l)), logs.filter((l) => /^error/.test(l)).join('\n'));
         const bound = logs.filter((l) => l.startsWith('info: BIND OK: ')).map((l) => l.split(' ')[3]).sort();
-        assert.deepStrictEqual(bound, ['wocCapture', 'wocDisable', 'wocDisplay', 'wocEnable', 'wocHudCentre', 'wocHudDown', 'wocHudLeft', 'wocHudRight', 'wocHudSize', 'wocHudSmaller', 'wocHudUp', 'wocRestart'], 'bound buttons');
+        assert.deepStrictEqual(bound, ['wocCapture', 'wocDisable', 'wocDisplay', 'wocEnable', 'wocHudCentre', 'wocHudDown', 'wocHudFade', 'wocHudLeft', 'wocHudRight', 'wocHudSize', 'wocHudSmaller', 'wocHudUp', 'wocRestart'], 'bound buttons');
         assert.strictEqual(byName.wocRestart.visible, false, 'restart button hidden while the map shows');
         console.log('ok   a page opened while the map is up shows it');
         await until('the setup line', () => byName.wocSetup.text === 'Set Instrument cluster > Central display area to Map view');

@@ -42,6 +42,8 @@ namespace woc {
 /* The HUD map's widest size, % of the HUD's width: wider is cut off at its
  * edges. A larger hud_width_pct is held to it. */
 const unsigned kHudMaxPct = 85;
+/* The widest HUD edge fade, % of the map's height on each side. */
+const unsigned kHudMaxEdgeFadePct = 30;
 
 struct FeedConfig {
     std::string socket = "/dev/shm/cluster-render/render.sock";
@@ -63,6 +65,10 @@ struct FeedConfig {
     bool hud_round_corners = true;
     /* the HUD map's dark background made black (see-through on a HUD) */
     bool hud_black_background = true;
+    /* the HUD map's edges feathered: faded to black (see-through on a HUD)
+     * over this % of its height on every side (0: off, at most
+     * kHudMaxEdgeFadePct) */
+    unsigned hud_edge_fade_pct = 0;
 };
 
 /* The status the Waze app shows (its render socket's "status" event), with
@@ -77,6 +83,7 @@ struct FeedStatus {
     std::string upload_reason;
     unsigned hud_width_pct = 0;   /* the HUD map's size setting (0: the default) */
     int hud_offset_x = 0, hud_offset_y = 0;   /* and where it is moved to from the centre */
+    unsigned hud_edge_fade_pct = 0;           /* and how far in its edges fade (0: off) */
 };
 
 /* Whether a status is worth a log line: its state, reason or target differs
@@ -112,6 +119,11 @@ public:
     /* The HUD map moved (FeedConfig::hud_offset_x/y), at once: the layer
      * only changes place, no new texture. */
     void set_hud_offset(int dx, int dy);
+    /* The HUD map's edge fade (FeedConfig::hud_edge_fade_pct), from the next
+     * frame on: only the scaled frames change, the layer stays. */
+    void set_hud_edge_fade(unsigned pct);
+    /* the scaler's edge fade now, in output pixels (for the tests) */
+    uint32_t scaler_edge_fade() const { return scaler_.edge_fade(); }
     /* Whether the renderer has target `name` (true until connected). */
     bool knows(const std::string &name) const;
 
@@ -143,6 +155,7 @@ private:
      * the frame rate allows (offer and poll). */
     void send_pending(int64_t now_ms);
     crk::QuadRect quad(uint32_t tw, uint32_t th) const;
+    uint32_t edge_fade_px(uint32_t sh) const;
     void count_second(int64_t now_ms);
 
     FeedConfig cfg_;

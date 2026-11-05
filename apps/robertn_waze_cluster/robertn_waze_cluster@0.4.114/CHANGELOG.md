@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.114 (eroobeeroo fork)
+
+Requires waze-on-cluster 0.7.112: HUD edge fade feathers the HUD map's
+edges, fading them to black (which the HUD shows as nothing) so the map melts
+away instead of ending in a hard rectangle. The button steps Off, Soft,
+Medium and Strong (8, 15 and 25 % of the map's height on each side), used
+from the next frame and kept per driver profile.
+
 ## 0.4.113 (eroobeeroo fork)
 
 Requires waze-on-cluster 0.7.111: the HUD map can be sized and moved from

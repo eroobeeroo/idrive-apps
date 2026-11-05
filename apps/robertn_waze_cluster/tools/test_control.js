@@ -242,6 +242,26 @@ test('Move HUD map: 10 px a press each way, Centre back; the render moves it and
     c.close();
 });
 
+test('HUD edge fade steps Off, Soft, Medium, Strong only while the map is on the HUD; the render applies it, patchd saves it', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.connectedPatch());
+    render.stream(true);
+    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
+    c.cycleHudFade();
+    assert(!render.received.some((m) => m.cmd === 'hud'), 'nothing sent while not on the HUD');
+    c.cycleDisplay();
+    await until('on the HUD', () => render.target === 'hud' && c.canChangeHudSize());
+    assert.strictEqual(c.hudFadeText(), 'HUD edge fade: Off');
+    for (const [pct, label] of [[8, 'Soft'], [15, 'Medium'], [25, 'Strong'], [0, 'Off']]) {
+        c.cycleHudFade();
+        await until(label, () => render.hudFade === pct && c.renderStatus.hud_edge_fade_pct === pct);
+        assert.strictEqual(c.hudFadeText(), `HUD edge fade: ${label}`);
+        await until('saved', () => { const p = patch.received.filter((m) => m.cmd === 'hud-fade').slice(-1)[0]; return p && p.hud_edge_fade_pct === pct; });
+    }
+    c.close();
+});
+
 test('a page opened while the map is up reads it, again after closing', async (render, patch) => {
     patch.res = SIZE;
     patch.safe = SAFE;

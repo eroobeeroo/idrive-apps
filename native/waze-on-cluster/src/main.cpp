@@ -78,7 +78,8 @@ std::string status_line(const FeedStatus &s)
            ",\"upload_cap_kb_per_s\":" + std::to_string(s.upload_cap_kb) +
            ",\"upload_reason\":" + json_escape(s.upload_reason) +
            ",\"hud_width_pct\":" + std::to_string(s.hud_width_pct) +
-           ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) + "}";
+           ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) +
+           ",\"hud_edge_fade_pct\":" + std::to_string(s.hud_edge_fade_pct) + "}";
 }
 
 class Server : public Control::Handler {
@@ -95,10 +96,11 @@ public:
         auto it = msg.find("target");
         auto pct = msg.find("hud_width_pct");
         auto hx = msg.find("hud_x"), hy = msg.find("hud_y");
+        auto fade = msg.find("hud_edge_fade_pct");
         if (cmd == "start" && it != msg.end()) {
             log_info("start %s", it->second.c_str());
             feeds_->set_targets(it->second);
-        } else if (cmd == "hud" && (pct != msg.end() || hx != msg.end() || hy != msg.end())) {
+        } else if (cmd == "hud" && (pct != msg.end() || hx != msg.end() || hy != msg.end() || fade != msg.end())) {
             /* the HUD map's size: 0 (the default box) or 20-100 % of its width */
             if (pct != msg.end()) {
                 const long v = std::strtol(pct->second.c_str(), nullptr, 10);
@@ -118,6 +120,16 @@ public:
                     feeds_->set_hud_offset((int)x, (int)y);
                 } else {
                     log_warn("hud: offset %ld,%ld out of range (-800..800)", x, y);
+                }
+            }
+            /* and its edges feathered: 0 (off) to 30 % of its height */
+            if (fade != msg.end()) {
+                const long f = std::strtol(fade->second.c_str(), nullptr, 10);
+                if (f >= 0 && f <= (long)kHudMaxEdgeFadePct) {
+                    log_info("hud: edges fade over %ld%% of the map's height", f);
+                    feeds_->set_hud_edge_fade((unsigned)f);
+                } else {
+                    log_warn("hud: edge fade %s out of range (0-%u)", fade->second.c_str(), kHudMaxEdgeFadePct);
                 }
             }
         } else {
@@ -231,7 +243,7 @@ int serve(const Config &cfg)
                      "(upload_kb_per_s in /var/opt/cluster-render/cluster-render.local.conf)", key, cfg.str(key).c_str());
     struct Range { const char *key; long lo, hi; } ranges[] = {
         {"dirty_threshold", 0, 64}, {"dirty_settle_ms", 0, 3600000}, {"tex_level_bits", 0, 3},
-        {"target_fps", 0, 60},      {"hud_width_pct", 0, 100},      {"hud_offset_x", -800, 800},      {"hud_offset_y", -800, 800},      {"hud_scale_down", 0, 1},      {"hud_round_corners", 0, 1},      {"hud_black_background", 0, 1},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
+        {"target_fps", 0, 60},      {"hud_width_pct", 0, 100},      {"hud_offset_x", -800, 800},      {"hud_offset_y", -800, 800},      {"hud_scale_down", 0, 1},      {"hud_round_corners", 0, 1},      {"hud_black_background", 0, 1},      {"hud_edge_fade_pct", 0, 30},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
         {"freeze_ms", 0, 600000},   {"freeze_min_fps", 1, 60},       {"alt_screen_port", 0, 65535},
         {"idle_ms", 1000, 600000},
         {"alt_screen_uid", 0, 4294967294L}};
@@ -254,6 +266,7 @@ int serve(const Config &cfg)
     fc.scale_down = cfg.num("hud_scale_down") != 0;
     fc.hud_round_corners = cfg.num("hud_round_corners") != 0;
     fc.hud_black_background = cfg.num("hud_black_background") != 0;
+    fc.hud_edge_fade_pct = (unsigned)cfg.num("hud_edge_fade_pct");
     fc.scaled_level_bits = vc.tex_level_bits;
     fc.video.w = vc.tex_width;
     fc.video.h = vc.tex_height;
@@ -502,6 +515,7 @@ void define_keys(Config *cfg)
     cfg->define("hud_scale_down", "1");
     cfg->define("hud_round_corners", "1");
     cfg->define("hud_black_background", "1");
+    cfg->define("hud_edge_fade_pct", "0");
     cfg->define("render_socket", "/dev/shm/cluster-render/render.sock");
     cfg->define("log_file", "/var/opt/waze-on-cluster/log/waze-on-cluster.log");
     cfg->define("log_file_kb", "512");

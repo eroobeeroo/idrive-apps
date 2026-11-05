@@ -190,6 +190,13 @@ it fade to black, so the HUD shows the roads, route and labels without Waze's
 grey-blue field; a day map (light background) is left as it is.
 Green is never made black (parks are about as dark as the night field), and green
 doesn't count towards the background, so a park filling the frame can't become it.
+The HUD map's edges can be feathered (`hud_edge_fade_pct`, 0-30 % of its
+height on each side, 0: off): the scaled frame fades to black along a
+smoothstep over that band, so the map melts into the see-through HUD instead
+of ending in a hard rectangle; where two edges meet the fades multiply into a
+soft corner. Used from the next frame. Control:
+`{"cmd":"hud","hud_edge_fade_pct":"15"}`; patchd saves it with
+`{"cmd":"hud-fade","hud_edge_fade_pct":15}`, kept per driver profile.
 
 **Per driver profile.** The app reads the head unit's current user account
 every 5 s (SOME/IP `SessionManager.currentUserAccountReference`) and tells

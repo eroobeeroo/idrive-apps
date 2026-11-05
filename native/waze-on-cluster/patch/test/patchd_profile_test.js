@@ -59,7 +59,7 @@ function ask(obj) {
             buf.split('\n').forEach(function (l) {
                 var m = null;
                 try { m = JSON.parse(l); } catch (e) {}
-                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply' || m.ev === 'profile-reply')) { s.end(); resolve(m); }
+                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply' || m.ev === 'hud-fade-reply' || m.ev === 'profile-reply')) { s.end(); resolve(m); }
             });
         });
         s.on('error', reject);
@@ -81,6 +81,7 @@ function ok(name, cond) {
     r = await ask({ cmd: 'target', target: 'hud' });
     r = await ask({ cmd: 'hud-size', hud_width_pct: 70 });
     r = await ask({ cmd: 'hud-pos', hud_x: 60, hud_y: -30 });
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 25 });
     ok('changes are kept for it', JSON.parse(fs.readFileSync(PROFILES, 'utf8')).driverA.target === 'hud' &&
         JSON.parse(fs.readFileSync(PROFILES, 'utf8')).driverA.hud_width_pct === 70);
     r = await ask({ cmd: 'profile', id: 'driverB' });
@@ -91,14 +92,17 @@ function ok(name, cond) {
     r = await ask({ cmd: 'profile', id: 'driverA' });
     ok('back to the first: its HUD at 70 % in the reply', r.ok && r.known && r.target === 'hud' && r.hud_width_pct === 70);
     ok('and its HUD position', r.hud_x === 60 && r.hud_y === -30);
+    ok('and its HUD edge fade', r.hud_edge_fade_pct === 25);
     await sleep(100);
     ok('and saved for the next start', /target = hud/.test(fs.readFileSync(CONF, 'utf8')) && /hud_width_pct = 70/.test(fs.readFileSync(CONF, 'utf8')) &&
         /upload_kb_per_s = 3000/.test(fs.readFileSync(CONF, 'utf8')));
     r = await ask({ cmd: 'profile', id: 'driverB' });
     ok('the second again: the cluster', r.ok && r.known && r.target === 'map');
     r = await ask({ cmd: 'hud-pos', hud_x: -100, hud_y: 0 });
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 0 });
     r = await ask({ cmd: 'profile', id: 'driverA' });
     ok('a position kept per profile: the first keeps its own', r.hud_x === 60 && r.hud_y === -30);
+    ok('an edge fade kept per profile too', r.hud_edge_fade_pct === 25);
     await sleep(100);
     ok('saved for the next start too', /hud_offset_x = 60/.test(fs.readFileSync(CONF, 'utf8')) && /hud_offset_y = -30/.test(fs.readFileSync(CONF, 'utf8')));
     r = await ask({ cmd: 'profile' });

@@ -44,6 +44,7 @@ const HUD_SMALLER_NAME = 'wocHudSmaller';
 /* Move HUD map left / right / up / down, and Centre HUD map */
 const HUD_MOVE_NAMES = { left: 'wocHudLeft', right: 'wocHudRight', up: 'wocHudUp', down: 'wocHudDown' };
 const HUD_CENTRE_NAME = 'wocHudCentre';
+const HUD_FADE_NAME = 'wocHudFade';         /* HUD edge fade: Off / Soft / Medium / Strong */
 const CAPTURE_NAME = 'wocCapture';
 const CAPTURE_STATUS = 'wocCaptureStatus';
 const ROW_NAMES = Array.from({ length: MAX_LINES }, (_, i) => `wocRow${String(i + 1).padStart(2, '0')}`);
@@ -145,7 +146,7 @@ class WazeClusterApp extends OnlineApp {
             return Promise.reject(new Error(`uiDescription has no ${STATE_NAME}`));
         }
         const names = [STATUS_NAME, SETUP_NAME, DISPLAY_NAME, HUD_SIZE_NAME, HUD_SMALLER_NAME]
-            .concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, ENABLE_NAME, DISABLE_NAME, RESTART_NAME, CAPTURE_NAME, CAPTURE_STATUS])
+            .concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, HUD_FADE_NAME, ENABLE_NAME, DISABLE_NAME, RESTART_NAME, CAPTURE_NAME, CAPTURE_STATUS])
             .concat(ROW_NAMES);
         names.forEach((name) => { this._components[name] = rhmi.getByName(name); });
         const missing = names.filter((name) => !this._components[name]);
@@ -160,6 +161,7 @@ class WazeClusterApp extends OnlineApp {
         this._bind(HUD_SMALLER_NAME, () => this._control.stepHudSize(-1));
         Object.keys(HUD_MOVE_NAMES).forEach((dir) => this._bind(HUD_MOVE_NAMES[dir], () => this._control.moveHud(dir)));
         this._bind(HUD_CENTRE_NAME, () => this._control.centreHud());
+        this._bind(HUD_FADE_NAME, () => this._control.cycleHudFade());
         this._bind(CAPTURE_NAME, () => this._control.capture());
         // Presses also arrive as the application's raw 'userEvent'; both paths
         // land in _press, which keeps a press delivered twice to one.
@@ -336,6 +338,9 @@ class WazeClusterApp extends OnlineApp {
         Object.values(HUD_MOVE_NAMES).forEach((n) => this._setEnabled(n, this._control.canChangeHudSize()));
         this._write(HUD_CENTRE_NAME, this._control.centreHudText());
         this._setEnabled(HUD_CENTRE_NAME, this._control.canChangeHudSize());
+        /* its edges feathered: enabled while the map goes to the HUD */
+        this._write(HUD_FADE_NAME, this._control.hudFadeText());
+        this._setEnabled(HUD_FADE_NAME, this._control.canChangeHudSize());
         this._write(CAPTURE_NAME, this._control.captureButtonText());
         this._write(CAPTURE_STATUS, this._control.captureText());
         const patch = this._control.connectedPatch();

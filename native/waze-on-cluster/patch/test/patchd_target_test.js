@@ -56,7 +56,7 @@ function ask(obj) {
             buf.split('\n').forEach(function (l) {
                 var m = null;
                 try { m = JSON.parse(l); } catch (e) {}
-                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply')) { s.end(); resolve(m); }
+                if (m && (m.ev === 'target-reply' || m.ev === 'hud-size-reply' || m.ev === 'hud-pos-reply' || m.ev === 'hud-fade-reply')) { s.end(); resolve(m); }
             });
         });
         s.on('error', reject);
@@ -105,6 +105,12 @@ function ok(name, cond) {
     ok('an out-of-range position is refused, nothing written', !r.ok && /hud_offset_x = 0\n/.test(fs.readFileSync(CONF, 'utf8')));
     r = await ask({ cmd: 'hud-pos', hud_x: 1.5, hud_y: 0 });
     ok('a position that is not whole pixels is refused', !r.ok);
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 15 });
+    ok('the HUD edge fade is saved next to the position', r.ok && r.hud_edge_fade_pct === 15 && /hud_edge_fade_pct = 15\n$/.test(fs.readFileSync(CONF, 'utf8')));
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 0 });
+    ok('off again: replaced', r.ok && /hud_edge_fade_pct = 0\n$/.test(fs.readFileSync(CONF, 'utf8')));
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 31 });
+    ok('an out-of-range fade is refused, nothing written', !r.ok && /hud_edge_fade_pct = 0\n$/.test(fs.readFileSync(CONF, 'utf8')));
 })().catch(function (e) {
     ok('no error: ' + e.message, false);
 }).then(function () {

@@ -6,6 +6,7 @@
  *   owner -> tool  {"cmd":"start","target":"sail"|"map"|"panel"|"hud"|"map+hud"}
  *                  {"cmd":"hud","hud_width_pct":"0"|"20".."100"}  the HUD map's size
  *                  {"cmd":"hud","hud_x":"-800".."800","hud_y":...}  where it is, from the centre
+ *                  {"cmd":"hud","hud_edge_fade_pct":"0".."30"}  its edges feathered (0: off)
  *   tool -> owner  {"ev":"status",...}  {"ev":"log","line":...}
  *
  * One connection is the owner; a second one is told "busy" and closed. */

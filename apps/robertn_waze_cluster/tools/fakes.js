@@ -130,7 +130,7 @@ class FakeRender extends LineServer {
 
     _status() {
         return { ev: 'status', state: this.state, target: this.target, page: this.page, reason: this.reason,
-            hud_width_pct: this.hudWidth || 0, hud_x: this.hudX || 0, hud_y: this.hudY || 0 };
+            hud_width_pct: this.hudWidth || 0, hud_x: this.hudX || 0, hud_y: this.hudY || 0, hud_edge_fade_pct: this.hudFade || 0 };
     }
 
     _set(state, target, page, reason) {
@@ -162,6 +162,7 @@ class FakeRender extends LineServer {
             if (msg.hud_width_pct !== undefined) this.hudWidth = Number(msg.hud_width_pct);
             if (msg.hud_x !== undefined) this.hudX = Number(msg.hud_x);
             if (msg.hud_y !== undefined) this.hudY = Number(msg.hud_y);
+            if (msg.hud_edge_fade_pct !== undefined) this.hudFade = Number(msg.hud_edge_fade_pct);
             this._broadcast(this._status());
         }
     }

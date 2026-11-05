@@ -397,6 +397,11 @@ int main()
     const crs::Layer *hl = layer_on(2);
     const unsigned default_w = hl ? hl->params.rect.w : 0;
     ok("the default HUD map is the kit's fitted box, narrower than the HUD", hl && default_w > 0 && default_w < 800);
+    feeds.set_hud_edge_fade(15);
+    ok("the HUD edge fade is set at once and reported", feeds.feed(0).scaler_edge_fade() == 200 * 15 / 100 &&
+                                                       feeds.status("decode").hud_edge_fade_pct == 15);
+    feeds.set_hud_edge_fade(0);
+    ok("and off again", feeds.feed(0).scaler_edge_fade() == 0 && feeds.status("decode").hud_edge_fade_pct == 0);
     feeds.set_hud_width(100);
     bpump(300, &f2);
     hl = layer_on(2);

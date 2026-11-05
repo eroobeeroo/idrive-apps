@@ -80,6 +80,8 @@ const HUD_MIN_PCT = 30, HUD_MAX_PCT = 85, HUD_STEP_PCT = 5, HUD_STANDARD_PCT = 5
  * HUD as well). */
 const HUD_MOVE_PX = 10, HUD_MOVE_MAX = 400;
 const MOVES = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+/* The HUD map's edge fade steps: % of the map's height its edges fade over, to black (see-through on the HUD). */
+const HUD_FADES = [[0, 'Off'], [8, 'Soft'], [15, 'Medium'], [25, 'Strong']];
 
 /* One newline-delimited-JSON stream socket, reconnecting while open.
  * link: 'down' | 'up' | 'absent' (ENOENT) | 'refused' (ECONNREFUSED) | 'failed'.
@@ -366,6 +368,33 @@ class WazeClusterControl extends EventEmitter {
         this.patch.send({ cmd: 'hud-pos', hud_x: x, hud_y: y });
         this.emit('change');
     }
+    /* ---- the HUD map's edges feathered ---- */
+    hudFade() {
+        if (this._askedFade != null) {
+            return this._askedFade;
+        }
+        const v = this.renderStatus && this.renderStatus.hud_edge_fade_pct;
+        return typeof v === 'number' ? v : null;
+    }
+    /* The next fade step: the render uses it from the next frame, patchd saves it. */
+    cycleHudFade() {
+        if (!this.canChangeHudSize()) {
+            return;
+        }
+        const cur = this.hudFade() || 0;
+        const i = HUD_FADES.findIndex(([p]) => p > cur);
+        const next = HUD_FADES[i < 0 ? 0 : i][0];
+        this._askedFade = next;
+        this.render.send({ cmd: 'hud', hud_edge_fade_pct: String(next) });
+        this.patch.send({ cmd: 'hud-fade', hud_edge_fade_pct: next });
+        this.emit('change');
+    }
+    hudFadeText() {
+        const f = this.hudFade();
+        const step = HUD_FADES.find(([p]) => p === f);
+        return `HUD edge fade: ${f == null ? '…' : step ? step[1] : `${f} %`}`;
+    }
+
     centreHudText() {
         const [x, y] = this.hudOffset();
         if (!x && !y) {
@@ -580,6 +609,9 @@ class WazeClusterControl extends EventEmitter {
             if (this._askedPos && msg.hud_x === this._askedPos[0] && msg.hud_y === this._askedPos[1]) {
                 this._askedPos = null;
             }
+            if (this._askedFade != null && msg.hud_edge_fade_pct === this._askedFade) {
+                this._askedFade = null;
+            }
             this.emit('change');
         } else if (msg.ev === 'log') {
             this._addLine('map', String(msg.line));
@@ -597,6 +629,11 @@ class WazeClusterControl extends EventEmitter {
         } else if (msg.ev === 'hud-size-reply') {
             if (!msg.ok) {
                 this._addLine('patch', `HUD size not saved: ${msg.reason || 'refused'}`);
+                this.emit('log');
+            }
+        } else if (msg.ev === 'hud-fade-reply') {
+            if (!msg.ok) {
+                this._addLine('patch', `HUD edge fade not saved: ${msg.reason || 'refused'}`);
                 this.emit('log');
             }
         } else if (msg.ev === 'hud-pos-reply') {
@@ -634,5 +671,5 @@ class WazeClusterControl extends EventEmitter {
 module.exports = {
     WazeClusterControl, LineSocket,
     RENDER_PATH, PATCH_PATH, PENDING_PATH, MAX_LINES,
-    SIZE, SAFE, DISPLAYS, HUD_SIZES, HUD_MIN_PCT, HUD_MAX_PCT, HUD_STEP_PCT, HUD_MOVE_PX
+    SIZE, SAFE, DISPLAYS, HUD_SIZES, HUD_MIN_PCT, HUD_MAX_PCT, HUD_STEP_PCT, HUD_MOVE_PX, HUD_FADES
 };

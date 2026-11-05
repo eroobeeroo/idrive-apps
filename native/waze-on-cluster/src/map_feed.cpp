@@ -103,6 +103,7 @@ void MapFeed::make_layer()
         scaling_ = true;
         scaler_.set_corner_radius(cfg_.target == "hud" && cfg_.hud_round_corners ? (sh / 12 > 6 ? sh / 12 : 6) : 0);
         scaler_.set_black_background(cfg_.target == "hud" && cfg_.hud_black_background);
+        scaler_.set_edge_fade(edge_fade_px(sh));
     }
     lo_ = cr::LayerOptions();
     lo_.target = cfg_.target;
@@ -150,6 +151,26 @@ crk::QuadRect MapFeed::quad(uint32_t tw, uint32_t th) const
     q.x = (uint32_t)(x < 0 ? 0 : x > xmax ? xmax : x);
     q.y = (uint32_t)(y < 0 ? 0 : y > ymax ? ymax : y);
     return q;
+}
+
+/* The edge fade in output pixels for a map sh high (0 off the HUD). */
+uint32_t MapFeed::edge_fade_px(uint32_t sh) const
+{
+    if (cfg_.target != "hud")
+        return 0;
+    const unsigned pct = cfg_.hud_edge_fade_pct > kHudMaxEdgeFadePct ? kHudMaxEdgeFadePct : cfg_.hud_edge_fade_pct;
+    return sh * pct / 100;
+}
+
+void MapFeed::set_hud_edge_fade(unsigned pct)
+{
+    if (pct == cfg_.hud_edge_fade_pct)
+        return;
+    cfg_.hud_edge_fade_pct = pct;
+    if (!scaling_)
+        return;
+    scaler_.set_edge_fade(edge_fade_px(scaler_.dst_h()));
+    log_info("render: HUD map edges fade over %u px (%u%%)", scaler_.edge_fade(), pct);
 }
 
 void MapFeed::set_hud_offset(int dx, int dy)
@@ -314,6 +335,7 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     s.hud_width_pct = cfg_.hud_width_pct;
     s.hud_offset_x = cfg_.hud_offset_x;
     s.hud_offset_y = cfg_.hud_offset_y;
+    s.hud_edge_fade_pct = cfg_.hud_edge_fade_pct;
     s.upload_cap_kb = cap_kb_;
     s.upload_reason = budget_reason_;
     char cap[96] = "";

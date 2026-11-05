@@ -115,6 +115,13 @@ void AtlasScaler::scale(const uint8_t *src, std::vector<uint8_t> *dst)
     plane(sv, w_, h_ / 2, dv, dw_, cx_, cy_);
     if (black_bg_)
         key_background(d);
+    if (fade_) {
+        feather(d, dw_, dw_, dh_, yfade_, 16);
+        if (!cfade_.empty()) {
+            feather(du, dw_, dw_ / 2, dh_ / 2, cfade_, 128);
+            feather(dv, dw_, dw_ / 2, dh_ / 2, cfade_, 128);
+        }
+    }
     if (radius_) {
         const uint32_t cr = radius_ / 2;
         corners(d, dw_, dw_, dh_, radius_, ycov_, 16);
@@ -241,6 +248,59 @@ void AtlasScaler::corners(uint8_t *p, uint32_t dp, uint32_t pw, uint32_t ph, uin
                     v = (uint8_t)(black + (((int)v - black) * (int)c) / 256);
                 }
         }
+}
+
+/* The i-th pixel in from an edge (its centre at i + 0.5 of px): a smoothstep
+ * from 0 at the edge to 256 at px in. */
+void AtlasScaler::ramp(uint32_t px, std::vector<uint16_t> *r)
+{
+    r->assign(px, 256);
+    for (uint32_t i = 0; i < px; i++) {
+        const double t = (i + 0.5) / px;
+        (*r)[i] = (uint16_t)(t * t * (3 - 2 * t) * 256 + 0.5);
+    }
+}
+
+void AtlasScaler::set_edge_fade(uint32_t px)
+{
+    if (dw_ && (px * 2 > dw_ || px * 2 > dh_))
+        px = (dw_ < dh_ ? dw_ : dh_) / 2;
+    if (px == fade_)
+        return;
+    fade_ = px;
+    yfade_.clear();
+    cfade_.clear();
+    if (px) {
+        ramp(px, &yfade_);
+        if (px / 2)
+            ramp(px / 2, &cfade_);
+    }
+}
+
+/* Rows inside the band get every pixel weighed (their row's ramp times the
+ * column's); the rows between get only their left and right bands. */
+void AtlasScaler::feather(uint8_t *p, uint32_t dp, uint32_t pw, uint32_t ph, const std::vector<uint16_t> &ramp,
+                          uint8_t black)
+{
+    const uint32_t n = (uint32_t)ramp.size();
+    if (!n || n * 2 > pw || n * 2 > ph)
+        return;
+    for (uint32_t y = 0; y < ph; y++) {
+        const uint32_t dy = y < ph - 1 - y ? y : ph - 1 - y;
+        const uint32_t wy = dy < n ? ramp[dy] : 256;
+        uint8_t *row = p + (size_t)y * dp;
+        for (uint32_t x = 0; x < pw; x++) {
+            const uint32_t dx = x < pw - 1 - x ? x : pw - 1 - x;
+            if (dx >= n && wy >= 256) {
+                x = pw - 1 - n;   /* skip to the right band */
+                continue;
+            }
+            const uint32_t w = (dx < n ? ramp[dx] : 256) * wy / 256;
+            if (w >= 256)
+                continue;
+            row[x] = (uint8_t)(black + (((int)row[x] - black) * (int)w) / 256);
+        }
+    }
 }
 
 }  // namespace woc

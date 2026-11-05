@@ -54,6 +54,8 @@ public:
     void set_hud_offset(int dx, int dy);
     int hud_offset_x() const { return base_.hud_offset_x; }
     int hud_offset_y() const { return base_.hud_offset_y; }
+    /* The HUD map's edge fade, % of its height (0: off). */
+    void set_hud_edge_fade(unsigned pct);
 
     /* For poll(): one entry per feed, appended; after_poll takes the same
      * vector and where they start. */

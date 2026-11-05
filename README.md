@@ -37,8 +37,10 @@ What it does:
 - **Made for a HUD** - the frames are scaled on the head unit to the size shown (sharper, 2-6x less data to the
   instrument cluster), the corners are rounded, and a night map's background is made black so only the roads,
   route and labels float in view (green, such as parks, is kept).
+- **Edge fade** - **HUD edge fade** steps Off / Soft / Medium / Strong: the map's edges fade to see-through so it
+  melts into the HUD instead of ending in a hard rectangle.
 - **Gives way** - the map steps aside while the HUD's own media and list pop-ups show, so they stay on the HUD.
-- **Per driver** - the display choice, size and position are kept for each driver profile and follow the
+- **Per driver** - the display choice, size, position and edge fade are kept for each driver profile and follow the
   driver when the profile changes.
 
 ![HUD map size and position](docs/hud/hud-size-and-position.png)
