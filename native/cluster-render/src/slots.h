@@ -138,7 +138,8 @@ struct TargetSpec {
     /* Parked behind the stock HMI's content while a layer contends: unmap
      * that content as the HMI (SlotManager, Port::take_over). */
     bool take_over_stock = false;
-    /* A hold (SlotManager::follow): the name of the target it follows. Its
+    /* A hold (SlotManager::follow): the names of the targets it follows, comma-separated (held while any is
+     * shown). Its
      * scene is never drawn and takes no client's layers. */
     std::string follows;
     /* A hold's: the only contents its take-overs unmap. Any other content

@@ -1418,7 +1418,7 @@ struct GuideRig : Rig {
     {
         TargetSpec g;
         g.name = "guide"; g.slot = from_table ? 0 : kGuideSlot; g.scene_id = kGuideScene; g.width = g.height = 16;
-        g.linger_ms = 0; g.take_over_stock = true; g.follows = "map"; g.take_over_contents = {kBox, kBoxAlt};
+        g.linger_ms = 0; g.take_over_stock = true; g.follows = "map,panel"; g.take_over_contents = {kBox, kBoxAlt};
         g.strike_limit = 2;   /* as load_holds makes it */
         if (from_table)
             g.table_slots = {0x105, 0x103};
@@ -1515,6 +1515,29 @@ static void guide_follows_the_map()
     p.pass(30);
     ok("parked when the map goes: released", joined().find("release guide") != std::string::npos &&
                                                  p.state(GuideRig::kGuide) == TargetState::Idle);
+}
+
+/* The hold follows the whole panel too: a layout over the panel left the HMI's guidance box showing as a dark
+ * box right of centre (seen on the car with Cluster Layouts). */
+static void guide_follows_the_panel()
+{
+    GuideRig r;
+    logged();
+    r.rows(kGuideSlot, 2, {{kBox, 1}});
+    r.pass(1000);
+    ok("hold: neither the map nor the panel shown, not asked for", joined().find("guide") == std::string::npos);
+    r.m.want(1, true, false);
+    r.pass();
+    r.rows(kPanelSlot, 2, {{kPanelScene, 1}});
+    r.m.on_shown(kPanelScene, r.now);
+    joined();
+    r.pass();
+    ok("the panel shown: the hold's empty scene published and asked for", calls_are("publish guide; request guide"));
+    r.m.want(1, false, false, false);
+    r.pass(30);
+    r.m.want(1, true, false, false);
+    r.pass(30);
+    ok("a panel layer with guide_hold 0: the hold not kept", r.state(GuideRig::kGuide) != TargetState::Shown);
 }
 
 static void guide_queue_order()
@@ -2587,6 +2610,7 @@ int main()
     }
 
     guide_follows_the_map();
+    guide_follows_the_panel();
     guide_queue_order();
     guide_never_verified_out();
     guide_live_route();
