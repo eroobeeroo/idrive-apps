@@ -96,7 +96,8 @@ supported, HIGH F included.
 | | Zoom | `Zoom: 180 dpi`, the density on disk, with `(after restart)` while it differs from the one aapd runs until the next head-unit start; `Zoom: —` without the patch |
 | | Zoom out / Zoom in | 10 dpi a press (150-400): out shows more map; enabled while patched, nothing is pending and the 10 s between changes has passed |
 | | Hide phone's turn card | a checkbox, ticked while the turn card on disk is hidden, or as asked while its change runs: the phone's own turn card cropped off the map; `(after restart)` as for the zoom; enabled as Zoom out and Zoom in |
-| **Head-up display** (this fork; its rows are in English) | Show map on | `Show map on: Cluster` / `HUD`: a press moves the map between the instrument cluster and the head-up display, at once, saved for the next start |
+| **Map display** (this fork; its rows are in English) | Pause map | a checkbox: ticked, the map is hidden on the cluster or the HUD and no frames are sent to the renderer; unticked, it shows again. Kept across restarts; the Cluster map row reads `Cluster map: Paused` |
+| | Show map on | `Show map on: Cluster` / `HUD`: a press moves the map between the instrument cluster and the head-up display, at once, saved for the next start |
 | | HUD map larger / smaller | the HUD map's width in 5 % steps, 30-85 % of the HUD (the row shows the size now); enabled while the map is on the HUD |
 | | Move HUD map left / right / up / down | 10 px a press, held inside the HUD |
 | | Centre HUD map | puts it back in the middle (the row shows how far it is moved) |

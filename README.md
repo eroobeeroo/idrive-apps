@@ -29,6 +29,8 @@ app.)*
 
 What it does:
 
+- **Pause map** - a checkbox that hides the map and stops sending it, on the cluster or the HUD, until unticked;
+  kept across restarts.
 - **Show map on: Cluster / HUD** - one button moves the map between the instrument cluster and the HUD, at once.
 - **Size** - **HUD map larger / smaller** in 5 % steps from 30 % to 85 % of the HUD's width (85 %: the widest it
   shows whole), the picture's shape kept. Standard is the fitted box, about 57 %.

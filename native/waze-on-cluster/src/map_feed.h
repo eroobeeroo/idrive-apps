@@ -90,6 +90,7 @@ struct FeedStatus {
     unsigned hud_width_pct = 0;   /* the HUD map's size setting (0: the default) */
     int hud_offset_x = 0, hud_offset_y = 0;   /* and where it is moved to from the centre */
     unsigned hud_edge_fade_pct = 0;           /* and how far in its edges fade (0: off) */
+    bool paused = false;                      /* the app's Pause map: hidden, no frames sent */
     bool guide_hold = true;
     bool guide_disabled = false;   /* cluster-render's guard keeps the turn box's hold off */
 };
@@ -139,6 +140,12 @@ public:
     bool knows(const std::string &name) const;
     /* The layer's guide_hold from now on. */
     void set_guide_hold(bool hold);
+    /* The app's Pause map: while paused the layer is hidden (the stock map or
+     * the HUD's own content shows) and no frame is sent; resumed, the next
+     * frame shows. The app has patchd save it (map_paused), which the tool
+     * starts with. */
+    void set_paused(bool paused);
+    bool paused() const { return paused_; }
 
     int fd() const { return client_.fd(); }
     bool wants_write() const { return client_.wants_write(); }
@@ -171,12 +178,15 @@ private:
     crk::QuadRect quad(uint32_t tw, uint32_t th) const;
     uint32_t edge_fade_px(uint32_t sh) const;
     void count_second(int64_t now_ms);
+    bool visible() const;
+    void show_or_hide();
 
     FeedConfig cfg_;
     cr::Client client_;
     uint32_t layer_ = 0;
     cr::LayerOptions lo_;   /* the layer's options as last sent */
     bool live_ = false, frozen_ = false;
+    bool paused_ = false;
     Picture picture_ = Picture::None;
     const char *stream_line_ = nullptr;   /* the stream's state as last logged */
     std::string layer_state_ = "stalled", layer_reason_;

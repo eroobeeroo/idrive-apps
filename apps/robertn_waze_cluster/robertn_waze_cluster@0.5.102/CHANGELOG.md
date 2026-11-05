@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.102 (eroobeeroo fork)
+
+Pause map: a checkbox at the top of the fork's section, now named Map
+display. Ticked, the map is hidden on the cluster or the HUD (the stock
+content shows) and no frames are sent to the cluster renderer, whatever the
+phone streams; unticked, it shows again with the next frame. The choice is
+kept across head-unit restarts. While paused the Cluster map row reads
+`Cluster map: Paused`. Requires waze-on-cluster 0.8.102.
+
 ## 0.5.101 (eroobeeroo fork)
 
 Brought up to date with upstream 0.5.6: Android Auto, the page in sections,

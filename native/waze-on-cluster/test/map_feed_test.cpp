@@ -367,6 +367,25 @@ int main()
     r.feed->set_stream(true, false, Picture::Shown);
     r.pump(1200, &f1);
     ok("no longer frozen: shown again", r.map_layer()->params.visible && r.st().state == "showing");
+    /* this fork: the app's Pause map hides the layer and sends no frames until resumed */
+    {
+        const auto drawn = [&](const std::vector<uint8_t> &f) {
+            crs::FakeGraph *mg = r.gpu.graph("map");
+            bool on = false;
+            if (mg)
+                for (const auto &kv : mg->shown.buffers)
+                    on = on || (kv.second.f == crs::TexFormat::R8 && kv.second.px == f);
+            return on;
+        };
+        r.feed->set_paused(true);
+        r.pump(1200, &f2);
+        ok("paused: hidden, the status says so, and the new frames not sent",
+           !r.map_layer()->params.visible && r.st().state == "paused" && r.st().reason == "Paused" && r.st().paused && !drawn(f2));
+        r.feed->set_paused(false);
+        r.pump(1200, &f2);
+        ok("resumed: shown again with the new frames", r.map_layer()->params.visible && r.st().state == "showing" && !r.st().paused &&
+                                                        drawn(f2));
+    }
 
     Rig h;
     h.feed->set_stream(false, false, Picture::None);
@@ -674,6 +693,16 @@ int main()
         feeds.set_hud_offset(0, 0);
         feeds.set_hud_width(0);
 
+        /* the app's Pause map reaches a feed made later too (Show map on switched while paused) */
+        feeds.set_paused(true);
+        feeds.set_targets("hud");
+        bpump(1500, &f2);
+        ok("paused: a new target's feed starts paused, hidden", feeds.paused() && feeds.feed(0).paused() &&
+                                                                layer_on(2) && !layer_on(2)->params.visible &&
+                                                                feeds.status("decode").state == "paused" && feeds.status("decode").paused);
+        feeds.set_paused(false);
+        feeds.set_targets("map");
+        bpump(1500, &f2);
         feeds.set_stream(false, false, Picture::None);
         bpump(200, &f2);
         ok("the stream not live reaches every feed: idle", feeds.status("decode").state == "idle");

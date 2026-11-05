@@ -7,9 +7,10 @@
  *                  {"cmd":"hud","hud_width_pct":"0"|"20".."100"}  the HUD map's size (this fork)
  *                  {"cmd":"hud","hud_x":"-800".."800","hud_y":...}  where it is, from the centre
  *                  {"cmd":"hud","hud_edge_fade_pct":"0".."30"}  its edges feathered (0: off)
+ *                  {"cmd":"pause","on":0|1}  the app's Pause map: hidden, no frames sent (this fork)
  *                  {"cmd":"guide","hide":0|1}  BMW's turn box hidden or not (guide_setting.h)
  *   tool -> owner  {"ev":"status",...,"hide_bmw_guidance":0|1,"guide_disabled":0|1,
- *                                  "hud_width_pct","hud_x","hud_y","hud_edge_fade_pct"}
+ *                                  "hud_width_pct","hud_x","hud_y","hud_edge_fade_pct","paused":0|1}
  *                  {"ev":"log","line":...}
  *
  * One connection is the owner; a second one is told "busy" and closed. */

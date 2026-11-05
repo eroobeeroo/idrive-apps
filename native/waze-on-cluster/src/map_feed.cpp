@@ -121,7 +121,7 @@ void MapFeed::make_layer()
     lo_.y = (int)q.y;
     lo_.w = q.w;
     lo_.h = q.h;
-    lo_.visible = live_ && !frozen_ && picture_ == Picture::Shown;
+    lo_.visible = visible();
     refused_.clear();
     layer_state_ = "stalled";
     layer_reason_.clear();
@@ -277,6 +277,10 @@ void MapFeed::count_second(int64_t now_ms)
 
 void MapFeed::offer(std::vector<uint8_t> *atlas, uint64_t id, int64_t now_ms)
 {
+    if (paused_) {   /* the app's Pause map: nothing goes to the renderer */
+        count_second(now_ms);
+        return;
+    }
     if (scaling_ && layer_) {
         /* kept without a copy: the buffer handed back is the last pending
          * one, the same size (a copy only for the first) */
@@ -319,11 +323,33 @@ void MapFeed::set_stream(bool live, bool frozen, Picture picture)
     live_ = live;
     frozen_ = frozen;
     picture_ = picture;
-    const bool visible = live && !frozen && picture == Picture::Shown;
-    if (layer_ && lo_.visible != visible) {
-        lo_.visible = visible;
+    show_or_hide();
+}
+
+/* Shown while the stream is live, not frozen, shows a picture and the app has not paused it. */
+bool MapFeed::visible() const
+{
+    return live_ && !frozen_ && picture_ == Picture::Shown && !paused_;
+}
+
+void MapFeed::show_or_hide()
+{
+    const bool v = visible();
+    if (layer_ && lo_.visible != v) {
+        lo_.visible = v;
         client_.set(layer_, lo_);
     }
+}
+
+void MapFeed::set_paused(bool paused)
+{
+    if (paused == paused_)
+        return;
+    paused_ = paused;
+    pending_ready_ = false;   /* a frame held for the HUD's scaler is not sent late */
+    log_info("render: map %s on %s", paused ? "paused from the app: hidden, no frames sent" : "resumed from the app",
+             cfg_.target.c_str());
+    show_or_hide();
 }
 
 void MapFeed::request_report()
@@ -361,6 +387,7 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     s.hud_offset_x = cfg_.hud_offset_x;
     s.hud_offset_y = cfg_.hud_offset_y;
     s.hud_edge_fade_pct = cfg_.hud_edge_fade_pct;
+    s.paused = paused_;
     s.upload_cap_kb = cap_kb_;
     s.upload_reason = budget_reason_;
     s.guide_hold = cfg_.guide_hold;
@@ -376,6 +403,10 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     } else if (!client_.connected()) {
         s.state = down_long_ ? "error" : "starting";
         s.reason = down_long_ ? "cluster renderer not reachable" : "waiting for the cluster renderer";
+        s.page = decode;
+    } else if (paused_) {
+        s.state = "paused";   /* the layer hidden: the stock map shows */
+        s.reason = "Paused";
         s.page = decode;
     } else if (frozen_ && live_) {
         s.state = "frozen";

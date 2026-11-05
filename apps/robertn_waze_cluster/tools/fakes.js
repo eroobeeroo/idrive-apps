@@ -125,6 +125,7 @@ class FakeRender extends LineServer {
         this.hudX = 0;
         this.hudY = 0;
         this.hudFade = 0;
+        this.paused = 0;
         this._showTimer = null;
     }
 
@@ -145,7 +146,7 @@ class FakeRender extends LineServer {
 
     _status() {
         const s = { ev: 'status', state: this.state, target: this.target, page: this.page, reason: this.reason,
-            hud_width_pct: this.hudWidth, hud_x: this.hudX, hud_y: this.hudY, hud_edge_fade_pct: this.hudFade };
+            hud_width_pct: this.hudWidth, hud_x: this.hudX, hud_y: this.hudY, hud_edge_fade_pct: this.hudFade, paused: this.paused };
         if (this.hide !== null) {
             s.hide_bmw_guidance = this.hide;
             s.guide_disabled = this.guideDisabled;
@@ -181,6 +182,12 @@ class FakeRender extends LineServer {
         /* this fork: the display choice moves the map; the HUD settings */
         if (msg.cmd === 'start' && msg.target) {
             this._set(this.state, msg.target, this.page, this.reason);
+        }
+        if (msg.cmd === 'pause' && (msg.on === 0 || msg.on === 1)) {
+            this.paused = msg.on;
+            this.state = msg.on ? 'paused' : this.state === 'paused' ? 'showing' : this.state;
+            this.reason = msg.on ? 'Paused' : this.reason === 'Paused' ? RENDER_FPS : this.reason;
+            this._broadcast(this._status());
         }
         if (msg.cmd === 'hud') {
             if (msg.hud_width_pct !== undefined) this.hudWidth = Number(msg.hud_width_pct);

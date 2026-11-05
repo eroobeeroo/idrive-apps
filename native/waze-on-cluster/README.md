@@ -326,6 +326,11 @@ it fade to black, so the HUD shows the roads, route and labels without Waze's
 grey-blue field; a day map (light background) is left as it is.
 Green is never made black (parks are about as dark as the night field), and green
 doesn't count towards the background, so a park filling the frame can't become it.
+**Pause map.** The app's Pause map checkbox hides the map layer and sends
+no frames, on whichever target it is on, until it is unticked; the status
+then reads `paused` (reason `Paused`). Control: `{"cmd":"pause","on":1}`;
+patchd saves it with `{"cmd":"pause","on":1}` as `map_paused`, which the
+tool starts with, so a pause lasts across restarts.
 The HUD map's edges can be feathered (`hud_edge_fade_pct`, 0-30 % of its
 height on each side, 0: off): the scaled frame fades to black along a
 smoothstep over that band, so the map melts into the see-through HUD instead

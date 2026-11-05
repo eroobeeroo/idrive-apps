@@ -67,6 +67,9 @@ public:
     /* The layers' guide_hold (BMW's turn box hidden while the map shows),
      * kept for a feed made later. */
     void set_guide_hold(bool hold);
+    /* The app's Pause map, for every feed and one made later. */
+    void set_paused(bool paused);
+    bool paused() const { return paused_; }
 
     FeedStatus status(const std::string &decode, const std::string &stream = std::string()) const;
     void request_report();
@@ -84,6 +87,7 @@ private:
     std::vector<uint8_t> copy_;
     bool live_ = false, frozen_ = false;
     Picture picture_ = Picture::None;
+    bool paused_ = false;
 };
 
 }  // namespace woc
