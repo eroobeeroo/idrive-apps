@@ -71,6 +71,12 @@ target are drawn in that target's scene (`src/stack.h`, `src/slots.h`).
 This section is iDrive 7's KOMBI; on iDrive 8 a target is a content the
 cluster is offered, and what differs is in "iDrive 8".
 
+**Experimental panel slots** (0.3.108, not verified): `panel201` and `panel202` are the panel in the KOMBI's
+other free full-cluster slots, 0x201 and 0x202. In 0x203 the panel takes the HMI's own cluster screen
+(0x01000500 in 0x200) down, and the KOMBI then moves the gear readout to its bottom bar and leaves a dark box
+where it was; these targets test whether another slot keeps that screen up. Nothing uses them unless a client
+asks for them by name.
+
 - **Layered stack.** Every layer is drawn at once, bottom to top by class
   (ambient, content, overlay, alert), then the client's `z`, then the newest
   on top. A layer marked `exclusive` hides the layers below it while it is

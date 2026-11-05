@@ -48,7 +48,7 @@ void define_keys(cld::Config *cfg)
 {
     cfg->define("generation", "auto");
     cfg->define("vsomeip_app", "cluster-demo");
-    cfg->define("targets", "map,panel,hud");
+    cfg->define("targets", "map,panel,hud,panel201,panel202");
     cfg->define("scene_ids_allowed", "0x010004f0,0x01000400,0x010004f1");
     cfg->define("map_slot", "0x100");
     cfg->define("map_content_class", "0");
@@ -71,6 +71,20 @@ void define_keys(cld::Config *cfg)
     cfg->define("map_yield_ms", "1500");
     cfg->define("panel_yield_ms", "1500");
     cfg->define("hud_yield_ms", "1500");
+    /* experiments: the panel in the KOMBI's other free full-cluster slots (0x203 takes the HMI's own cluster
+     * screen, 0x01000500 in 0x200, down, and the KOMBI then shows its fallback gear box) */
+    for (const char *n : {"panel201", "panel202"}) {
+        const std::string t(n);
+        const auto def = [&](const char *k, const char *v) { cfg->define((t + k).c_str(), v); };
+        def("_slot", t == "panel201" ? "0x201" : "0x202");
+        def("_content_class", "0");
+        def("_scene_id", "0x01000400");
+        def("_size", "1920x720");
+        def("_linger_ms", "3000");
+        def("_take_over_stock", "0");
+        def("_yield_slots", "");
+        def("_yield_ms", "1500");
+    }
     cfg->define("dcsm_hmi_client_handle", "1");
     cfg->define("guide_hold", "1");
     cfg->define("guide_slots", "auto");
