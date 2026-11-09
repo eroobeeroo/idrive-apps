@@ -23,7 +23,7 @@ included, unchanged), with two additions to Waze on cluster and its app:
   unticked, kept across restarts.
 
 Both are saved per driver profile with the other map settings. Its versions sit above the original's
-(waze-on-cluster 0.9.105 on 0.9.5, the app 0.6.104 on 0.6.4), so the Store installs them from here where both
+(waze-on-cluster 0.9.106 on 0.9.6, the app 0.6.104 on 0.6.4), so the Store installs them from here where both
 repositories are sources; everything else comes from the original.
 
 Tools and apps for the iDrive 7 head unit (MGU) of a BMW, installed from the
