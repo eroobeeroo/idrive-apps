@@ -22,9 +22,14 @@ included, unchanged), with two additions to Waze on cluster and its app:
 - **Pause map** (a checkbox): the map hidden on the cluster and the HUD and no frames sent until it is
   unticked, kept across restarts.
 
-Both are saved per driver profile with the other map settings. Its versions sit above the original's
-(waze-on-cluster 0.9.106 on 0.9.6, the app 0.6.104 on 0.6.4), so the Store installs them from here where both
-repositories are sources; everything else comes from the original.
+- **A layout and the HUD map at once** (cluster-render): the panel target (Cluster Layouts) has its own scene
+  id, 0x010004f8, instead of sharing the HUD's 0x01000400, so a layout on the cluster and the Waze map on the
+  HUD no longer take turns. The id is on probation: if the cluster restarts twice right after the panel is
+  mapped, the renderer goes back to the shared id by itself (native/cluster-render/README.md).
+
+The map settings are saved per driver profile. Its versions sit above the original's (waze-on-cluster 0.9.106
+on 0.9.6, the app 0.6.104 on 0.6.4, cluster-render 0.5.100 on 0.5.0), so the Store installs them from here
+where both repositories are sources; everything else comes from the original.
 
 Tools and apps for the iDrive 7 head unit (MGU) of a BMW, installed from the
 [mgu Store](https://github.com/robertnisipeanu/mgu-store).
