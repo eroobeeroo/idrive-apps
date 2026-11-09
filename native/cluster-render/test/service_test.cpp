@@ -515,6 +515,44 @@ static void kombi_restart(Rig &r)
  * long after any mapping is no strike; the map (its strike limit the
  * default, as main.cpp leaves it) only has its strikes logged; a client's
  * guard_reset is an unknown op. */
+/* The panel's scene id on probation (fallback_scene_id): once the guard
+ * has disabled it, the service starts with the panel on its fallback id,
+ * with no strike limit. */
+static void panel_fallback()
+{
+    const std::string path = "/tmp/crs-fallback-" + std::to_string(getpid()) + ".txt";
+    unlink(path.c_str());
+    TargetSpec p;
+    p.name = "panel"; p.slot = 0x203; p.scene_id = 0x010004f8; p.width = 1920; p.height = 720; p.linger_ms = 3000;
+    p.fallback_scene_id = 0x01000400; p.strike_limit = 2;
+    {
+        Guard g;
+        g.load(path, "0.3.7", "boot-1");
+        g.strike(p, "test");
+        g.strike(p, "test");
+    }
+    {
+        Rig r;
+        r.sc.targets[1] = p;
+        r.sc.version = "0.3.7";
+        r.sc.boot_id = "boot-1";
+        r.start();
+        ok("panel on probation, never struck: its own id 0x010004f8", r.svc->slots().targets()[1].scene_id == 0x010004f8);
+    }
+    {
+        Rig r;
+        r.sc.targets[1] = p;
+        r.sc.guard_path = path;
+        r.sc.version = "0.3.7";
+        r.sc.boot_id = "boot-2";
+        r.start();
+        const TargetSpec &t = r.svc->slots().targets()[1];
+        ok("panel's own id disabled by the guard: the service starts on 0x01000400, never disabled",
+           t.scene_id == 0x01000400 && t.strike_limit == 0 && t.fallback_scene_id == 0 && !r.svc->slots().disabled(1));
+    }
+    unlink(path.c_str());
+}
+
 static void mapping_guard()
 {
     const std::string path = "/tmp/crs-guard-" + std::to_string(getpid()) + ".txt";
@@ -1595,6 +1633,7 @@ int main()
     guide_hold();
     guide_hold_choice();
     mapping_guard();
+    panel_fallback();
     repeats();
     framing();
     scene_files();

@@ -400,9 +400,17 @@ cluster is offered, and what differs is in "iDrive 8".
     cannot be written leaves the guard working from memory until the
     service stops.
 - **Scene ids** come from `scene_ids_allowed`. Ids 7702 and 7703 made the
-  KOMBI restart the cluster and the HUD. Two targets with one id (`panel`
-  and `hud`) are never requested at once; the second's request unpublishes
-  the first's released scene and publishes its own.
+  KOMBI restart the cluster and the HUD. Two targets with one id are never
+  requested at once; the second's request unpublishes the first's released
+  scene and publishes its own.
+- **The panel's own id** (this fork): `panel` is on 0x010004f8, so a layout
+  on the panel and the Waze map on the HUD (0x01000400) show at once. The
+  id is not yet seen on a car, so it is on probation
+  (`panel_fallback_scene_id`): the mapping guard disables it after two
+  cluster restarts right after its mapping, the service exits and systemd
+  starts it again with the panel on 0x01000400, shared with the HUD as
+  before (the two take turns) and never disabled. `cluster-render
+  guard-reset` tries the own id again.
 - **Our own id in the slot.** A target can be lost while the table still
   names its scene id. That is a report from before the loss, or the stock
   HMI's content with the same id (0x01000400 is also the speech dialog). The
@@ -1063,6 +1071,8 @@ client under the guest's Node 8.
     client.
 
 Not verified, needs the car:
+  - the panel on its own scene id 0x010004f8 (the KOMBI taking it in 0x203,
+    and the panel and the HUD shown at once);
   - how the KOMBI's renderer draws the same: the extra passes and their
     depth clear, render order, the cut view, and mat4 order on its GPU;
   - animations against the KOMBI's clock;
