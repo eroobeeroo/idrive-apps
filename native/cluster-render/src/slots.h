@@ -161,12 +161,6 @@ struct TargetSpec {
     /* The mapping guard's strikes that disable this mapping; 0: never
      * disabled, the strikes only logged (guard.h). Holds: 2. */
     int strike_limit = 0;
-    /* A scene id to fall back to (<target>_fallback_scene_id; 0: none): the
-     * target's own id is then on probation, strike_limit 2, and once the
-     * guard disables it the service starts again on this one (Service), with
-     * no strike limit. The panel's: its own id lets it show with the HUD,
-     * 0x01000400 is the id it shared with the HUD. */
-    uint64_t fallback_scene_id = 0;
     /* The stock HMI's pop-up slots the target gives way to (the HUD's media
      * and list pop-ups, 0x322): while one of them shows content, the target
      * is released and not asked for, so the pop-up keeps its place (asking
@@ -401,9 +395,6 @@ public:
     std::function<void(Evidence, const std::string &detail, int64_t now_ms)> on_evidence;
     /* The RAMSES console's line counts (RamsesConsole::counts_text). */
     std::function<std::string(int64_t now_ms)> console_text;
-    /* Called when the guard disables a target that has a fallback scene id
-     * (TargetSpec::fallback_scene_id): the service restarts on it. */
-    std::function<void(const TargetSpec &)> on_fallback;
 
 private:
     struct Target {

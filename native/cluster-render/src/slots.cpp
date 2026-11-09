@@ -614,8 +614,6 @@ void SlotManager::on_availability(bool up, int64_t now_ms)
         t_[last].disabled = guard_->strike(
             specs_[last], std::to_string(now_ms - t_[last].mapped_ms) + " ms after mapping it (target " +
                               target_state_name(t_[last].status.state) + ")");
-        if (t_[last].disabled && specs_[last].fallback_scene_id && on_fallback)
-            on_fallback(specs_[last]);
         /* One incident, one strike: the event is not struck again. */
         t_[last].mapped_ms = kNoMapping;
         t_[last].first_show = false;

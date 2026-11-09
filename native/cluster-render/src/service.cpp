@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cstdlib>
 
 #include "log.h"
 
@@ -14,30 +13,12 @@ namespace crs {
 
 Service::Service(Gpu *gpu, Port *port, const ServiceConfig &cfg) : cfg_(cfg), slots_(port, nullptr)
 {
-    if (!cfg_.guard_path.empty())
-        guard_.load(cfg_.guard_path, cfg_.version, cfg_.boot_id);
-    for (TargetSpec t : cfg_.targets) {
-        /* A scene id on probation the guard has disabled: the target falls
-         * back to the id it had before (slots.h fallback_scene_id). */
-        if (t.fallback_scene_id && !cfg_.guard_path.empty() && guard_.disabled(t)) {
-            log_warn("target %s: scene 0x%llx is disabled by the mapping guard; using 0x%llx instead%s", t.name.c_str(),
-                     (unsigned long long)t.scene_id, (unsigned long long)t.fallback_scene_id,
-                     t.fallback_scene_id == 0x01000400 ? " (the HUD's too: the two are not shown at once)" : "");
-            t.scene_id = t.fallback_scene_id;
-            t.fallback_scene_id = 0;
-            t.strike_limit = 0;
-        }
+    for (const TargetSpec &t : cfg_.targets)
         slots_.add(t);
-    }
-    if (!cfg_.guard_path.empty())
+    if (!cfg_.guard_path.empty()) {
+        guard_.load(cfg_.guard_path, cfg_.version, cfg_.boot_id);
         slots_.set_guard(&guard_);
-    /* the guard disabled a scene id on probation: start again on the fallback
-     * (systemd restarts the service; clients reconnect and redraw) */
-    slots_.on_fallback = [](const TargetSpec &t) {
-        log_error("target %s: scene 0x%llx disabled by the mapping guard; restarting on 0x%llx", t.name.c_str(),
-                  (unsigned long long)t.scene_id, (unsigned long long)t.fallback_scene_id);
-        std::exit(70);
-    };
+    }
     comp_.reset(new Compositor(gpu, &slots_, cfg_.budget, cfg_.upload_burst_ms));
     comp_->set_slow_flush_ms(cfg_.slow_flush_ms);
     comp_->set_file_tick_ms(1000 / std::max(1, cfg_.fps));
