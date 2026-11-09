@@ -44,6 +44,7 @@ void MapFeeds::follow()
          * share is in debt: no packing on the renderer's thread for the HUD */
         fc.video.pan_blocks = false;
         hud_.reset(new MapFeed(fc));
+        hud_->set_paused(paused_);
         hud_->set_stream(live_, frozen_, picture_);
         hud_->changed(id_);
         log_info("hud: on, at most %u frames a second", hud_fps_);
@@ -53,6 +54,7 @@ void MapFeeds::follow()
          * KOMBI shows its own content again */
         if (cluster_on_) {
             cluster_.reset(new MapFeed(base_));
+            cluster_->set_paused(paused_);
             cluster_->set_stream(live_, frozen_, picture_);
             if (hud_ && hud_->latest(&copy_))
                 cluster_->hold(&copy_, id_);
@@ -117,6 +119,24 @@ void MapFeeds::set_hud_offset(int dx, int dy)
     if (!hud_)
         return;
     hud_->set_hud_offset(dx, dy);
+}
+
+void MapFeeds::set_hud_edge_fade(unsigned pct)
+{
+    if (pct > kHudMaxEdgeFadePct)
+        pct = kHudMaxEdgeFadePct;
+    base_.hud_edge_fade_pct = pct;
+    if (hud_)
+        hud_->set_hud_edge_fade(pct);
+}
+
+void MapFeeds::set_paused(bool paused)
+{
+    paused_ = paused;
+    if (cluster_)
+        cluster_->set_paused(paused);
+    if (hud_)
+        hud_->set_paused(paused);
 }
 
 void MapFeeds::set_guide_hold(bool hold)
@@ -218,6 +238,10 @@ FeedStatus MapFeeds::status(const std::string &decode, const std::string &stream
         }
     }
     s.hud_width_pct = base_.hud_width_pct;
+    s.hud_edge_fade_pct = base_.hud_edge_fade_pct;
+    s.paused = paused_;
+    if (paused_ && !cluster_)
+        s.state = "paused";
     s.hud_offset_x = hud_ ? hud_->hud_offset_x() : base_.hud_offset_x;
     s.hud_offset_y = hud_ ? hud_->hud_offset_y() : base_.hud_offset_y;
     return s;

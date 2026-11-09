@@ -87,7 +87,7 @@ function ask(obj) {
             buf.split('\n').forEach(function (l) {
                 var m = null;
                 try { m = JSON.parse(l); } catch (e) {}
-                if (m && /^(cluster|hud|hud-size|hud-pos)-reply$/.test(m.ev)) { s.end(); resolve(m); }
+                if (m && /^(cluster|hud|hud-size|hud-pos|hud-fade|pause)-reply$/.test(m.ev)) { s.end(); resolve(m); }
             });
         });
         s.on('error', reject);
@@ -135,6 +135,15 @@ function ok(name, cond) {
     r = await ask({ cmd: 'hud-pos', hud_x: 40, hud_y: -20 });
     ok('the HUD position is saved next to the size, in one write', r.ok && r.hud_offset_x === 40 && r.hud_offset_y === -20 &&
         fs.readFileSync(STATE, 'utf8') === 'hud = 1\nhud_width_pct = 85\nhud_offset_x = 40\nhud_offset_y = -20\n');
+    /* this fork: the HUD map's edge fade and Pause map, saved the same way */
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 15 });
+    ok('the HUD edge fade is saved', r.ok && r.hud_edge_fade_pct === 15 && /\nhud_edge_fade_pct = 15\n$/.test(fs.readFileSync(STATE, 'utf8')));
+    r = await ask({ cmd: 'hud-fade', hud_edge_fade_pct: 31 });
+    ok('an edge fade over 30 % is refused, nothing written', !r.ok && /\nhud_edge_fade_pct = 15\n$/.test(fs.readFileSync(STATE, 'utf8')));
+    r = await ask({ cmd: 'pause', on: 1 });
+    ok('Pause map is saved', r.ok && r.map_paused === 1 && /\nmap_paused = 1\n$/.test(fs.readFileSync(STATE, 'utf8')));
+    r = await ask({ cmd: 'pause', on: 0 });
+    ok('and resumed', r.ok && /\nmap_paused = 0\n$/.test(fs.readFileSync(STATE, 'utf8')));
     r = await ask({ cmd: 'hud-pos', hud_x: 0, hud_y: 0 });
     ok('centred again: both replaced', r.ok && /hud_offset_x = 0\nhud_offset_y = 0\n$/.test(fs.readFileSync(STATE, 'utf8')));
     r = await ask({ cmd: 'hud-pos', hud_x: 900, hud_y: 0 });

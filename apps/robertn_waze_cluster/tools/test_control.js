@@ -364,6 +364,50 @@ test('the HUD disabled by the cluster renderer: Disabled after errors, the size 
     c.close();
 });
 
+/* this fork */
+test('HUD edge fade steps Off, Soft, Medium, Strong only while the map is on the HUD; the render applies it, patchd saves it', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.connectedPatch());
+    render.stream(true);
+    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
+    c.cycleHudFade();
+    assert(!render.received.some((m) => m.cmd === 'hud' && m.hud_edge_fade_pct !== undefined), 'nothing sent while not on the HUD');
+    c.showOn('hud');
+    await until('on the HUD', () => c.canChangeHudSize());
+    assert.strictEqual(c.hudFadeText(), 'HUD edge fade: Off');
+    for (const [pct, label] of [[8, 'Soft'], [15, 'Medium'], [25, 'Strong'], [0, 'Off']]) {
+        c.cycleHudFade();
+        assert.strictEqual(c.hudFadeText(), `HUD edge fade: ${label}`, 'shown at once');
+        await until(label, () => render.hudFade === pct && c.renderStatus.hud_edge_fade_pct === pct);
+        await until('saved', () => { const p = patch.received.filter((m) => m.cmd === 'hud-fade').slice(-1)[0]; return p && p.hud_edge_fade_pct === pct; });
+    }
+    c.close();
+});
+
+test('Pause map: the render hides the map and stops its frames, patchd saves it; resumed the same way', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.connectedPatch());
+    render.stream(true);
+    await until('showing, not paused', () => c.renderStatus && c.renderStatus.state === 'showing' && c.mapPaused() === false && c.canPause());
+    c.togglePause();
+    assert.strictEqual(c.mapPaused(), true, 'ticked at once, before the render answers');
+    await until('paused', () => render.paused === 1 && c.renderStatus.paused === 1 && c.mapPaused() === true);
+    await until('saved', () => patch.received.some((m) => m.cmd === 'pause' && m.on === 1));
+    c.togglePause();
+    await until('resumed', () => render.paused === 0 && c.renderStatus.paused === 0 && c.mapPaused() === false);
+    await until('saved again', () => patch.received.filter((m) => m.cmd === 'pause').map((m) => m.on).join() === '1,0');
+    render.paused = null;   /* a render without Pause map */
+    render._broadcast(render._status());
+    await until('not known', () => c.mapPaused() === null && !c.canPause());
+    const sent = render.received.filter((m) => m.cmd === 'pause').length;
+    c.togglePause();
+    assert.strictEqual(render.received.filter((m) => m.cmd === 'pause').length, sent, 'nothing sent while unknown');
+    c.close();
+    assert(!c.canPause(), 'nothing while the render is not connected');
+});
+
 test('the HUD map size as a slider: 5 % steps from 30 to 85 %, Standard at the step below its ~57 %', async (render, patch) => {
     render.hud = 1;
     const c = control();

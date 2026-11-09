@@ -64,6 +64,11 @@ public:
      * later; the status has the place as far as the HUD's feed puts it. */
     void set_hud_width(unsigned pct);
     void set_hud_offset(int dx, int dy);
+    /* The HUD map's edge fade (0-30 % of its height), from the next frame. */
+    void set_hud_edge_fade(unsigned pct);
+    /* The app's Pause map, for every feed and one made later. */
+    void set_paused(bool paused);
+    bool paused() const { return paused_; }
     int hud_offset_x() const { return base_.hud_offset_x; }
     int hud_offset_y() const { return base_.hud_offset_y; }
     /* The cluster map layer's guide_hold. */
@@ -97,6 +102,7 @@ private:
     FeedConfig base_;
     unsigned hud_fps_;
     bool cluster_on_, hud_on_;
+    bool paused_ = false;
     std::unique_ptr<MapFeed> cluster_, hud_;
     std::vector<uint8_t> copy_;   /* a picture on its way from one feed to the other */
     uint64_t id_ = 0;   /* the newest frame's */

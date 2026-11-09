@@ -192,7 +192,7 @@ async function main() {
         await until('B in effect', () => sync.profile === 'driverB' && sync.own === false);
         await until('render moved', () => render.received.length === 3);
         assert.deepStrictEqual(render.received, [{ cmd: 'cluster', on: '1' }, { cmd: 'hud', on: '0' },
-            { cmd: 'hud', hud_width_pct: '0', hud_x: '0', hud_y: '0' }]);
+            { cmd: 'hud', hud_width_pct: '0', hud_x: '0', hud_y: '0' , hud_edge_fade_pct: '0' }]);
         await until('short connection closed', () => render._clients.size === 0);
     });
     render.received.length = 0;

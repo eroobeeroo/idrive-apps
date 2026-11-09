@@ -91,6 +91,9 @@ const HUD_SIZE_NAME = 'wocHudSize';
 const HUD_POS_NAME = 'wocHudPos';
 const HUD_MOVE_NAMES = { left: 'wocHudLeft', right: 'wocHudRight', up: 'wocHudUp', down: 'wocHudDown' };
 const HUD_CENTRE_NAME = 'wocHudCentre';
+/* this fork: the HUD map's edge fade (a button: Off / Soft / Medium / Strong) and Pause map (a checkbox) */
+const HUD_FADE_NAME = 'wocHudFade';
+const PAUSE_NAME = 'wocPause';
 const CAPTURE_NAME = 'wocCapture';
 const CAPTURE_STATUS = 'wocCaptureStatus';
 const LOGS_NAME = 'wocLogs';
@@ -205,7 +208,7 @@ class WazeClusterApp extends OnlineApp {
         const names = [STATUS_NAME, MAP_NAME, RESTART_STATUS_NAME, ENABLE_NAME, DISABLE_NAME, WIFI_NAME, WIFI_HINT_NAME, AA_STATUS_NAME,
             AA_ENABLE_NAME, AA_DISABLE_NAME, AA_ZOOM_NAME, AA_ZOOM_OUT_NAME, AA_ZOOM_IN_NAME, AA_CARD_NAME, RESTART_NAME, GUIDE_NAME,
             HEAD_GENERAL_NAME, HEAD_HUD_NAME, SHOW_ON_NAME, PROFILE_NAME, HUD_NAME, HUD_SIZE_NAME, HUD_POS_NAME]
-            .concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, CAPTURE_NAME, CAPTURE_STATUS,
+            .concat(Object.values(HUD_MOVE_NAMES), [HUD_CENTRE_NAME, HUD_FADE_NAME, PAUSE_NAME, CAPTURE_NAME, CAPTURE_STATUS,
                 LOGS_NAME, LOGS_SAVE, LOGS_STATUS, LOGS_QR, LOGS_URL], LOGS_ROW_NAMES);
         names.forEach((name) => { this._components[name] = rhmi.getByName(name); });
         const missing = names.filter((name) => !this._components[name]);
@@ -256,6 +259,12 @@ class WazeClusterApp extends OnlineApp {
         });
         Object.keys(HUD_MOVE_NAMES).forEach((dir) => this._bind(HUD_MOVE_NAMES[dir], () => this._control.moveHud(dir)));
         this._bind(HUD_CENTRE_NAME, () => this._control.centreHud());
+        this._bind(HUD_FADE_NAME, () => this._control.cycleHudFade());
+        this._bind(PAUSE_NAME, () => {
+            /* as for the turn box: the render's answer decides the tick */
+            delete this._written[`selected:${PAUSE_NAME}`];
+            this._control.togglePause();
+        });
         this._bind(CAPTURE_NAME, () => this._control.capture());
         this._bind(LOGS_NAME, () => Promise.resolve(rhmi.openState(LOGS_STATE))
             .catch((err) => logger.warn(`openState ${LOGS_STATE} failed: ${err && err.message}`)));
@@ -573,6 +582,12 @@ class WazeClusterApp extends OnlineApp {
         this._write(HUD_POS_NAME, c.hudPositionText());
         Object.values(HUD_MOVE_NAMES).forEach((n) => this._setEnabled(n, adjust));
         this._setEnabled(HUD_CENTRE_NAME, c.canCentreHud());
+        /* this fork (English): the HUD map's edges feathered, while the map goes to the HUD; Pause map */
+        this._write(HUD_FADE_NAME, c.hudFadeText());
+        this._setEnabled(HUD_FADE_NAME, adjust);
+        this._write(PAUSE_NAME, 'Pause map');
+        this._setEnabled(PAUSE_NAME, c.canPause());
+        this._setSelected(PAUSE_NAME, c.mapPaused() === true);
     }
 
     _renderLogs() {

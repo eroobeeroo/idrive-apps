@@ -129,6 +129,7 @@ class FakeRender extends LineServer {
         this.hud = 0;
         this.cluster = 1;
         this.hudState = null;
+        this.paused = 0;   /* this fork's Pause map; null: a render without it */
         this._showTimer = null;
     }
 
@@ -152,8 +153,11 @@ class FakeRender extends LineServer {
         /* hud null: a tool without the HUD's fields (one refused by its head unit) */
         if (this.hud !== null) {
             Object.assign(s, { cluster: this.cluster, hud: this.hud, hud_state: this.hud ? this.hudState || this.state : 'off',
-                hud_width_pct: this.hudWidth || 0, hud_x: this.hudX || 0, hud_y: this.hudY || 0 });
+                hud_width_pct: this.hudWidth || 0, hud_x: this.hudX || 0, hud_y: this.hudY || 0,
+                hud_edge_fade_pct: this.hudFade || 0 });
         }
+        /* this fork's Pause map; paused null: a render without it */
+        if (this.paused !== null && this.paused !== undefined) s.paused = this.paused;
         if (this.hide !== null) {
             s.hide_bmw_guidance = this.hide;
             s.guide_disabled = this.guideDisabled;
@@ -197,6 +201,11 @@ class FakeRender extends LineServer {
             const lim = (v) => (this.hudMaxX ? Math.max(-this.hudMaxX, Math.min(this.hudMaxX, v)) : v);
             if (msg.hud_x !== undefined) this.hudX = lim(Number(msg.hud_x));
             if (msg.hud_y !== undefined) this.hudY = Number(msg.hud_y);
+            if (msg.hud_edge_fade_pct !== undefined) this.hudFade = Number(msg.hud_edge_fade_pct);
+            this._broadcast(this._status());
+        }
+        if (msg.cmd === 'pause' && (msg.on === '0' || msg.on === '1')) {
+            this.paused = Number(msg.on);
             this._broadcast(this._status());
         }
     }

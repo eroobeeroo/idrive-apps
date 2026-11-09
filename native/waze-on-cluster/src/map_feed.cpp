@@ -117,6 +117,7 @@ void MapFeed::make_layer()
         shape_.level_bits = cfg_.scaled_level_bits;
         shape_.radius = cfg_.hud_round_corners ? (sh / 12 > 6 ? sh / 12 : 6) : 0;
         shape_.black = cfg_.hud_black_background;
+        shape_.fade = edge_fade_px(sh);
     }
     lo_ = cr::LayerOptions();
     lo_.target = cfg_.target;
@@ -127,7 +128,7 @@ void MapFeed::make_layer()
     lo_.y = (int)q.y;
     lo_.w = q.w;
     lo_.h = q.h;
-    lo_.visible = live_ && !frozen_ && picture_ == Picture::Shown;
+    lo_.visible = wanted_visible();
     show_due_ = false;
     refused_.clear();
     layer_state_ = "stalled";
@@ -168,6 +169,42 @@ crk::QuadRect MapFeed::quad(uint32_t tw, uint32_t th) const
     placed_x_ = (int)q.x - (int)cx;
     placed_y_ = (int)q.y - (int)cy;
     return q;
+}
+
+uint32_t MapFeed::edge_fade_px(uint32_t sh) const
+{
+    if (cfg_.target != "hud")
+        return 0;
+    const unsigned pct = cfg_.hud_edge_fade_pct > kHudMaxEdgeFadePct ? kHudMaxEdgeFadePct : cfg_.hud_edge_fade_pct;
+    return sh * pct / 100;
+}
+
+void MapFeed::set_hud_edge_fade(unsigned pct)
+{
+    if (pct > kHudMaxEdgeFadePct)
+        pct = kHudMaxEdgeFadePct;
+    if (pct == cfg_.hud_edge_fade_pct)
+        return;
+    cfg_.hud_edge_fade_pct = pct;
+    if (!scaling_)
+        return;
+    shape_.fade = edge_fade_px(shape_.dh);   /* the worker makes the next frame with it */
+    log_info("render: HUD map edges fade over %u px (%u%%)", shape_.fade, pct);
+}
+
+bool MapFeed::wanted_visible() const
+{
+    return live_ && !frozen_ && picture_ == Picture::Shown && !paused_;
+}
+
+void MapFeed::set_paused(bool paused)
+{
+    if (paused == paused_)
+        return;
+    paused_ = paused;
+    log_info("render: map %s on %s", paused ? "paused from the app: hidden, no frames sent" : "resumed from the app",
+             cfg_.target.c_str());
+    show_or_hide();
 }
 
 void MapFeed::set_hud_offset(int dx, int dy)
@@ -396,7 +433,12 @@ void MapFeed::set_stream(bool live, bool frozen, Picture picture)
     live_ = live;
     frozen_ = frozen;
     picture_ = picture;
-    const bool visible = live && !frozen && picture == Picture::Shown;
+    show_or_hide();
+}
+
+void MapFeed::show_or_hide()
+{
+    const bool visible = wanted_visible();
     if (!layer_ || (lo_.visible || show_due_) == visible)
         return;
     show_due_ = visible;
@@ -444,6 +486,8 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     s.hud_width_pct = cfg_.hud_width_pct;
     s.hud_offset_x = placed_x_;
     s.hud_offset_y = placed_y_;
+    s.hud_edge_fade_pct = cfg_.hud_edge_fade_pct;
+    s.paused = paused_;
     s.upload_cap_kb = cap_kb_;
     s.upload_reason = budget_reason_;
     s.guide_hold = cfg_.guide_hold;
@@ -460,6 +504,10 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     } else if (!client_.connected()) {
         s.state = down_long_ ? "error" : "starting";
         s.reason = down_long_ ? "cluster renderer not reachable" : "waiting for the cluster renderer";
+        s.page = decode;
+    } else if (paused_) {
+        s.state = "paused";   /* the layer hidden: the stock map shows */
+        s.reason = "Paused";
         s.page = decode;
     } else if (frozen_ && live_) {
         s.state = "frozen";

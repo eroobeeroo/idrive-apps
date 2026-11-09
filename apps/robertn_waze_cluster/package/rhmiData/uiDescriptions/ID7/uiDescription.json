@@ -758,6 +758,54 @@
               }
             }
           ]
+        },
+        "73": {
+          "type": "button",
+          "name": "wocHudFade",
+          "properties": {
+            "Visible": {
+              "value": 1,
+              "type": "UInt"
+            },
+            "Focusable": {
+              "value": 3,
+              "type": "UInt"
+            }
+          },
+          "rows": [
+            {
+              "Text": {
+                "value": "HUD edge fade",
+                "type": "Text"
+              }
+            }
+          ]
+        },
+        "49": {
+          "type": "checkBox",
+          "name": "wocPause",
+          "properties": {
+            "Visible": {
+              "value": 1,
+              "type": "UInt"
+            },
+            "Focusable": {
+              "value": 3,
+              "type": "UInt"
+            }
+          },
+          "rows": [
+            {
+              "Text": {
+                "value": "Pause map",
+                "type": "Text"
+              },
+              "eParam_RowSelected": {
+                "value": false,
+                "type": "Bool"
+              }
+            }
+          ]
         }
       }
     },

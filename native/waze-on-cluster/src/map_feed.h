@@ -55,6 +55,8 @@ namespace woc {
 /* The HUD map's widest size, % of the HUD's width: wider is cut off at its
  * edges. A larger hud_width_pct is held to it. */
 const unsigned kHudMaxPct = 85;
+/* The widest HUD edge fade, % of the map's height on each side. */
+const unsigned kHudMaxEdgeFadePct = 30;
 
 struct FeedConfig {
     std::string socket = "/dev/shm/cluster-render/render.sock";
@@ -79,6 +81,10 @@ struct FeedConfig {
     bool hud_round_corners = true;
     /* the HUD map's dark background made black (see-through on a HUD) */
     bool hud_black_background = true;
+    /* the HUD map's edges feathered: faded to black (see-through on a HUD)
+     * over this % of its height on every side (0: off, at most
+     * kHudMaxEdgeFadePct) */
+    unsigned hud_edge_fade_pct = 0;
 };
 
 /* The status the Waze app shows (its render socket's "status" event), with
@@ -99,6 +105,8 @@ struct FeedStatus {
     std::string hud_state = "off";   /* off, disabled, or the HUD feed's state */
     unsigned hud_width_pct = 0;   /* the HUD map's size setting (0: the default) */
     int hud_offset_x = 0, hud_offset_y = 0;   /* and where it is moved to from the centre */
+    unsigned hud_edge_fade_pct = 0;           /* and how far in its edges fade (0: off) */
+    bool paused = false;                      /* the app's Pause map: hidden, no frames sent */
 };
 
 /* Whether a status is worth a log line: its state, reason or target differs
@@ -143,6 +151,19 @@ public:
      * the map is at (hud_offset_x/y, the status's) then is as far as it
      * goes, and the one asked for is kept for the next size. */
     void set_hud_offset(int dx, int dy);
+    /* The HUD map's edge fade (FeedConfig::hud_edge_fade_pct), from the next
+     * frame on: only the scaled frames change, the layer stays. */
+    void set_hud_edge_fade(unsigned pct);
+    /* the edge fade in output pixels for a map sh high (0 off the HUD) */
+    uint32_t edge_fade_px(uint32_t sh) const;
+    /* the edge fade the scaled frames are made with, output pixels (tests) */
+    uint32_t scaled_edge_fade() const { return scaling_ ? shape_.fade : 0; }
+    /* The app's Pause map: while paused the layer is hidden (the stock map or
+     * the HUD's own content shows) and no frame is sent; resumed, the newest
+     * frame shows. The app has patchd save it (map_paused), which the tool
+     * starts with. */
+    void set_paused(bool paused);
+    bool paused() const { return paused_; }
     int hud_offset_x() const { return placed_x_; }
     int hud_offset_y() const { return placed_y_; }
     /* A layer to take frames: made, and not disabled by cluster-render's
@@ -217,6 +238,10 @@ private:
     uint32_t layer_ = 0;
     cr::LayerOptions lo_;   /* the layer's options as last sent */
     bool show_due_ = false;   /* visible once the frame waiting has gone */
+    bool paused_ = false;     /* the app's Pause map */
+    /* shown: the stream live, not frozen, with a picture, and not paused */
+    bool wanted_visible() const;
+    void show_or_hide();
     /* The newest frame, while held_new_; on a layer that scales, once there
      * is one, unless another feed or the worker has it. */
     std::vector<uint8_t> held_;

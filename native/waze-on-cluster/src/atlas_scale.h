@@ -45,6 +45,14 @@ public:
      * nothing, so the picture's corners look round. Applied by scale(). */
     void set_corner_radius(uint32_t r);
 
+    /* Feathered edges: the picture fades to black (Y 16, U and V 128) over
+     * its outer px output pixels on every side, along a smoothstep, so on a
+     * HUD, which shows black as nothing, the map melts away instead of
+     * ending in a hard rectangle. 0: off. Where two edges meet the fades
+     * multiply, so the corners round off softly. Applied by scale(). */
+    void set_edge_fade(uint32_t px);
+    uint32_t edge_fade() const { return fade_; }
+
     /* Black background: the map's background (its most common Y, followed
      * smoothly frame to frame) and the shades just above it fade to black,
      * so a HUD, which shows black as nothing, shows the roads, route and
@@ -70,6 +78,10 @@ private:
     static void corners(uint8_t *p, uint32_t dp, uint32_t pw, uint32_t ph, uint32_t r, const std::vector<uint16_t> &cov,
                         uint8_t black);
     static void coverage(uint32_t r, std::vector<uint16_t> *cov);
+    /* The edge fade on one plane (pw x ph, pitch dp): ramp[i] (0-256) for
+     * the i-th pixel in from an edge, ramp.size() pixels wide. */
+    static void feather(uint8_t *p, uint32_t dp, uint32_t pw, uint32_t ph, const std::vector<uint16_t> &ramp, uint8_t black);
+    static void ramp(uint32_t px, std::vector<uint16_t> *r);
 
     uint32_t w_ = 0, h_ = 0, dw_ = 0, dh_ = 0;
     unsigned bits_ = 0;
@@ -81,6 +93,8 @@ private:
     int bg_ = -1;   /* the background's Y, x 16 (smoothed) */
     void key_background(uint8_t *d);
     std::vector<uint16_t> ycov_, ccov_;   /* corner coverage: Y at radius_, U and V at radius_ / 2 */
+    uint32_t fade_ = 0;
+    std::vector<uint16_t> yfade_, cfade_;   /* edge fade ramps: Y over fade_, U and V over fade_ / 2 */
 };
 
 /* What a ScaleWorker makes of a frame: a w x h atlas scaled to dw x dh,
@@ -90,10 +104,11 @@ struct ScaleShape {
     unsigned level_bits = 0;
     uint32_t radius = 0;
     bool black = false;
+    uint32_t fade = 0;   /* the edge fade, output pixels (0: off) */
     bool operator==(const ScaleShape &o) const
     {
         return w == o.w && h == o.h && dw == o.dw && dh == o.dh && level_bits == o.level_bits && radius == o.radius &&
-               black == o.black;
+               black == o.black && fade == o.fade;
     }
     bool operator!=(const ScaleShape &o) const { return !(*this == o); }
 };

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.6.104
+
+- eroobeeroo's fork, on 0.6.4: a **Pause map** checkbox (the map hidden on the cluster and the HUD, no frames
+  sent, kept across restarts) and a **HUD edge fade** button (Off, Soft, Medium, Strong: the HUD map's edges
+  feathered to black, which the HUD shows as nothing), both kept per driver profile. Needs waze-on-cluster 0.9.105.
+
 ## 0.6.4
 
 Map settings per driver profile, after eroobeeroo's #41. Show on, the HUD

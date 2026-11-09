@@ -103,7 +103,8 @@ function state() {
     return s;
 }
 function profiles() { var t = fs.readFileSync(PROFILES, 'utf8'); try { return JSON.parse(t); } catch (e) { throw new Error(e.message + ': ' + t); } }
-function settings(cluster, hud, pct, x, y) { return { cluster: cluster, hud: hud, hud_width_pct: pct, hud_offset_x: x, hud_offset_y: y }; }
+/* (this fork's two keys, the HUD edge fade and Pause map, at their defaults unless given) */
+function settings(cluster, hud, pct, x, y, fade, paused) { return { cluster: cluster, hud: hud, hud_width_pct: pct, hud_offset_x: x, hud_offset_y: y, hud_edge_fade_pct: fade || 0, map_paused: paused || 0 }; }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 /* For a check that nothing is written: past the save's delay. */
 function saved() { return sleep(SAVE_MS + 150); }
@@ -218,8 +219,8 @@ var A = 'a1b2c3d4-0000-4000-8000-000000000001', B = 'a1b2c3d4-0000-4000-8000-000
 
     /* The format a patchd and render without profiles read. */
     var lines = fs.readFileSync(STATE, 'utf8').split('\n').filter(Boolean);
-    ok('map.state.conf: only "key = whole number" lines of the five map keys (what 0.9.x reads)', lines.length === 5 &&
-        lines.every(function (l) { return /^(cluster|hud|hud_width_pct|hud_offset_x|hud_offset_y) = -?\d+$/.test(l); }), lines.join('|'));
+    ok('map.state.conf: only "key = whole number" lines of the seven map keys (this fork\'s render reads them all)', lines.length === 7 &&
+        lines.every(function (l) { return /^(cluster|hud|hud_width_pct|hud_offset_x|hud_offset_y|hud_edge_fade_pct|map_paused) = -?\d+$/.test(l); }), lines.join('|'));
 
     /* Untick: the shared settings back, the copy gone. */
     r = await ask({ cmd: 'profile-own', id: A, on: 0 });
@@ -393,7 +394,7 @@ var A = 'a1b2c3d4-0000-4000-8000-000000000001', B = 'a1b2c3d4-0000-4000-8000-000
         same(state(), SHARED) && same(profiles(), { shared: null, own: {}, active: null }));
     await stop();
     fs.writeFileSync(PROFILES, JSON.stringify({ shared: SHARED, own: {}, active: null }));
-    var sharedText = 'cluster = 0\nhud = 1\nhud_width_pct = 0\nhud_offset_x = 0\nhud_offset_y = 0\n';
+    var sharedText = 'cluster = 0\nhud = 1\nhud_width_pct = 0\nhud_offset_x = 0\nhud_offset_y = 0\nhud_edge_fade_pct = 0\nmap_paused = 0\n';
     fs.writeFileSync(STATE, sharedText);
     await start();
     ok('killed after map.state.conf, before profiles.json dropped them: map.state.conf as it was, profiles.json without them',

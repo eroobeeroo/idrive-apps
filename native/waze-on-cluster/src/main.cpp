@@ -87,7 +87,8 @@ std::string status_line(const FeedStatus &s)
            ",\"cluster\":" + (s.cluster ? "1" : "0") +
            ",\"hud\":" + (s.hud ? "1" : "0") + ",\"hud_state\":" + json_escape(s.hud_state) +
            ",\"hud_width_pct\":" + std::to_string(s.hud_width_pct) +
-           ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) + "}";
+           ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) +
+           ",\"hud_edge_fade_pct\":" + std::to_string(s.hud_edge_fade_pct) + ",\"paused\":" + (s.paused ? "1" : "0") + "}";
 }
 
 class Server : public Control::Handler {
@@ -107,6 +108,7 @@ public:
         auto hide = msg.find("hide");
         auto pct = msg.find("hud_width_pct");
         auto hx = msg.find("hud_x"), hy = msg.find("hud_y"), on = msg.find("on");
+        auto fade = msg.find("hud_edge_fade_pct");
         if (cmd == "start" && it != msg.end()) {
             log_info("start %s", it->second.c_str());
             if (!feeds_->set_target(it->second))
@@ -116,7 +118,22 @@ public:
             feeds_->set_guide_hold(guide_->hide());
         } else if (cmd == "cluster" && on != msg.end() && (on->second == "0" || on->second == "1")) {
             feeds_->set_cluster(on->second == "1");
-        } else if (cmd == "hud" && (on != msg.end() || pct != msg.end() || hx != msg.end() || hy != msg.end())) {
+        } else if (cmd == "pause" && on != msg.end() && (on->second == "0" || on->second == "1")) {
+            /* the app's Pause map: the map hidden and no frames sent until resumed (patchd saves it) */
+            log_info("pause: map %s", on->second == "1" ? "paused" : "resumed");
+            feeds_->set_paused(on->second == "1");
+        } else if (cmd == "hud" &&
+                   (on != msg.end() || pct != msg.end() || hx != msg.end() || hy != msg.end() || fade != msg.end())) {
+            /* its edges feathered: 0 (off) to 30 % of its height */
+            if (fade != msg.end()) {
+                const long f = std::strtol(fade->second.c_str(), nullptr, 10);
+                if (f >= 0 && f <= (long)kHudMaxEdgeFadePct) {
+                    log_info("hud: edges fade over %ld%% of the map's height", f);
+                    feeds_->set_hud_edge_fade((unsigned)f);
+                } else {
+                    log_warn("hud: edge fade %s out of range (0-%u)", fade->second.c_str(), kHudMaxEdgeFadePct);
+                }
+            }
             if (on != msg.end()) {
                 if (on->second == "0" || on->second == "1")
                     feeds_->set_hud(on->second == "1");
@@ -209,6 +226,7 @@ int serve(Config cfg)
         {"cluster", 0, 1},          {"hud", 0, 1},                   {"hud_fps", 1, 30},
         {"hud_width_pct", 0, 100},  {"hud_offset_x", -800, 800},     {"hud_offset_y", -800, 800},
         {"hud_scale_down", 0, 1},   {"hud_round_corners", 0, 1},     {"hud_black_background", 0, 1},
+        {"hud_edge_fade_pct", 0, 30}, {"map_paused", 0, 1},
         {"freeze_ms", 0, 600000},   {"freeze_min_fps", 1, 60},       {"alt_screen_port", 0, 65535},
         {"idle_ms", 1000, 600000},  {"blank_ms", 1000, 600000},
         {"alt_screen_uid", 0, 4294967294L}, {"gpu_copy", 0, 1}};
@@ -239,6 +257,7 @@ int serve(Config cfg)
     fc.scale_down = cfg.num("hud_scale_down") != 0;
     fc.hud_round_corners = cfg.num("hud_round_corners") != 0;
     fc.hud_black_background = cfg.num("hud_black_background") != 0;
+    fc.hud_edge_fade_pct = (unsigned)cfg.num("hud_edge_fade_pct");
     fc.scaled_level_bits = vc.tex_level_bits;
     fc.video.w = vc.tex_width;
     fc.video.h = vc.tex_height;
@@ -265,6 +284,10 @@ int serve(Config cfg)
     std::string err;
     VideoProducer producer(vc);
     MapFeeds feed(fc, cfg.num("cluster") == 1, cfg.num("hud") == 1, (unsigned)cfg.num("hud_fps"));
+    if (cfg.num("map_paused") != 0) {   /* the app's Pause map, saved by patchd */
+        log_info("pause: the map starts paused (map_paused = 1)");
+        feed.set_paused(true);
+    }
     Server server(&feed, &guide);
     Control control(&server);
     server.set_control(&control);
@@ -506,6 +529,8 @@ void define_keys(Config *cfg)
     cfg->define("hud_scale_down", "1");
     cfg->define("hud_round_corners", "1");
     cfg->define("hud_black_background", "1");
+    cfg->define("hud_edge_fade_pct", "0");
+    cfg->define("map_paused", "0");
     cfg->define("render_socket", "/dev/shm/cluster-render/render.sock");
     cfg->define("log_file", "/var/opt/waze-on-cluster/log/waze-on-cluster.log");
     cfg->define("log_file_kb", "512");

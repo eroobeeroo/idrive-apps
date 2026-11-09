@@ -811,6 +811,34 @@ int main()
     hl = layer_on(2);
     ok("moved, made larger (held to 60 px) and smaller again: back where it was asked (240+200 = 440)",
        hl && hl->params.rect.x == 440 && feeds.status("decode").hud_offset_x == 200);
+    /* this fork: the HUD map's edge fade, and Pause map */
+    {
+        const crs::Layer *before = layer_on(2);
+        feeds.set_hud_edge_fade(15);
+        bpump(300, &f2);
+        const uint32_t dh = layer_on(2) ? layer_on(2)->params.rect.h & ~3u : 0;
+        ok("edge fade: the HUD's frames made with it at once, the same layer, reported",
+           feeds.hud_feed() && feeds.hud_feed()->scaled_edge_fade() == dh * 15 / 100 && dh > 0 && layer_on(2) == before &&
+               feeds.status("decode").hud_edge_fade_pct == 15);
+        feeds.set_hud_edge_fade(99);
+        ok("edge fade: held to 30 %", feeds.status("decode").hud_edge_fade_pct == 30);
+        feeds.set_hud_edge_fade(0);
+        ok("edge fade: off again", feeds.hud_feed()->scaled_edge_fade() == 0 && feeds.status("decode").hud_edge_fade_pct == 0);
+        feeds.set_paused(true);
+        bpump(1200, &f1);
+        ok("paused: both maps hidden, the status says so",
+           layer_on(0) && !layer_on(0)->params.visible && layer_on(2) && !layer_on(2)->params.visible &&
+               feeds.status("decode").state == "paused" && feeds.status("decode").paused &&
+               feeds.status("decode").hud_state == "paused");
+        feeds.set_hud(false);
+        feeds.set_hud(true);
+        bpump(600, &f1);
+        ok("paused: a HUD feed made later starts paused", feeds.hud_feed() && feeds.hud_feed()->paused());
+        feeds.set_paused(false);
+        bpump(1500, &f2);
+        ok("resumed: both shown again", layer_on(0) && layer_on(0)->params.visible && layer_on(2) && layer_on(2)->params.visible &&
+                                         feeds.status("decode").state == "showing" && !feeds.status("decode").paused);
+    }
     feeds.set_hud_offset(-30, 20);
     feeds.set_hud_width(60);
     bpump(300, &f2);

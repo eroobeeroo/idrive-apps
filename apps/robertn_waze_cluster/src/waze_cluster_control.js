@@ -108,6 +108,8 @@ const SHOWN_ON = ['cluster', 'hud', 'both'];
  * HUD and reports the offset as far as it went. An asked size or place shows until the render's status has it,
  * HUD_ASKED_MS has passed, the render reconnects or patchd fails to save the size; then the render's own. */
 const HUD_MOVE_PX = 10, HUD_MOVE_MAX = 400, HUD_ASKED_MS = 300;
+/* this fork: the HUD map's edge fade steps, % of the map's height its edges fade over to black (see-through on the HUD) */
+const HUD_FADES = [[0, 'Off'], [8, 'Soft'], [15, 'Medium'], [25, 'Strong']];
 const MOVES = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
 /* One newline-delimited-JSON stream socket, reconnecting while open.
@@ -492,6 +494,61 @@ class WazeClusterControl extends EventEmitter {
     _clearAskedHud() {
         clearTimeout(this._askedHudTimer);
         this._askedHud = null;
+    }
+
+    /* ---- this fork: the HUD map's edges feathered, and Pause map ---- */
+    hudFade() {
+        if (this._askedFade != null) {
+            return this._askedFade;
+        }
+        const v = this.renderStatus && this.renderStatus.hud_edge_fade_pct;
+        return typeof v === 'number' ? v : null;
+    }
+    /* The next fade step: the render uses it from the next frame, patchd saves it. */
+    cycleHudFade() {
+        if (!this.canChangeHudSize()) {
+            return;
+        }
+        const cur = this.hudFade() || 0;
+        const i = HUD_FADES.findIndex(([p]) => p > cur);
+        const next = HUD_FADES[i < 0 ? 0 : i][0];
+        this._askedFade = next;
+        clearTimeout(this._askedFadeTimer);
+        this._askedFadeTimer = setTimeout(() => {
+            this._askedFade = null;
+            this.emit('change');
+        }, HUD_ASKED_MS);
+        this.render.send({ cmd: 'hud', hud_edge_fade_pct: String(next) });
+        this.patch.send({ cmd: 'hud-fade', hud_edge_fade_pct: next });
+        this.emit('change');
+    }
+    hudFadeText() {
+        const f = this.hudFade();
+        const step = HUD_FADES.find(([p]) => p === f);
+        return `HUD edge fade: ${f == null ? '—' : step ? step[1] : `${f} %`}`;
+    }
+    /* Pause map: the map hidden and no frames sent, on the cluster and the HUD, as asked or as the render last
+     * said; null while the render has not said (not connected, or a render without it). Saved for the next start. */
+    mapPaused() {
+        if (this._askedPause != null) {
+            return this._askedPause;
+        }
+        const p = this.renderStatus && this.renderStatus.paused;
+        return p === 0 || p === 1 ? p === 1 : null;
+    }
+    canPause() {
+        return this.render.connected() && this.mapPaused() !== null;
+    }
+    /* Flips it: the render pauses or resumes at once, patchd saves it. */
+    togglePause() {
+        if (!this.canPause()) {
+            return;
+        }
+        const on = this.mapPaused() ? 0 : 1;
+        this._askedPause = on === 1;
+        this.render.send({ cmd: 'pause', on: String(on) });
+        this.patch.send({ cmd: 'pause', on });
+        this.emit('change');
     }
 
     /* ---- where the HUD map is: moved from its centre, in HUD pixels ---- */
@@ -1012,6 +1069,13 @@ class WazeClusterControl extends EventEmitter {
             if (this._askedPos && msg.hud_x === this._askedPos[0] && msg.hud_y === this._askedPos[1]) {
                 this._askedPos = null;
             }
+            if (this._askedFade != null && msg.hud_edge_fade_pct === this._askedFade) {
+                clearTimeout(this._askedFadeTimer);
+                this._askedFade = null;
+            }
+            if (this._askedPause != null && msg.paused === (this._askedPause ? 1 : 0)) {
+                this._askedPause = null;
+            }
             this.emit('change');
         }
     }
@@ -1029,7 +1093,7 @@ class WazeClusterControl extends EventEmitter {
             this._noteCardAsked(msg);
             this._wake();
             this.emit('change');
-        } else if (/^(cluster|hud|hud-size|hud-pos)-reply$/.test(msg.ev)) {
+        } else if (/^(cluster|hud|hud-size|hud-pos|hud-fade|pause)-reply$/.test(msg.ev)) {
             if (!msg.ok) {
                 this._log.info(`patchd did not save the setting: ${msg.reason || 'refused'}`);
             }
@@ -1054,5 +1118,5 @@ class WazeClusterControl extends EventEmitter {
 module.exports = {
     WazeClusterControl, LineSocket,
     RENDER_PATH, PATCH_PATH, PENDING_PATH, AA_PENDING_PATH, BOOT_ID_PATH,
-    SIZE, SAFE, ZOOM_STEP, RESTART_FAILED, SHOWN_ON, HUD_SIZE_STEPS
+    SIZE, SAFE, ZOOM_STEP, RESTART_FAILED, SHOWN_ON, HUD_SIZE_STEPS, HUD_FADES
 };

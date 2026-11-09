@@ -322,7 +322,9 @@ class ProfileSync extends EventEmitter {
         const on = (v) => (v ? '1' : '0');
         const shows = ['cluster', 'hud'].sort((a, b) => s[b] - s[a]);
         const cmds = shows.map((d) => ({ cmd: d, on: on(s[d]) }))
-            .concat([{ cmd: 'hud', hud_width_pct: String(s.hud_width_pct), hud_x: String(s.hud_offset_x), hud_y: String(s.hud_offset_y) }]);
+            .concat([{ cmd: 'hud', hud_width_pct: String(s.hud_width_pct), hud_x: String(s.hud_offset_x), hud_y: String(s.hud_offset_y),
+                hud_edge_fade_pct: String(s.hud_edge_fade_pct || 0) }])
+            .concat(s.map_paused === 0 || s.map_paused === 1 ? [{ cmd: 'pause', on: on(s.map_paused) }] : []);
         const c = this._control;
         if (c && c.render && c.render.connected()) {
             cmds.forEach((m) => c.render.send(m));

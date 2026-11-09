@@ -1,5 +1,31 @@
 # idrive-apps
 
+> [!WARNING]
+> **Disclaimer.** This fork is an independent personal project by eroobeeroo, separate from the original project
+> and its authors. It is not affiliated with, endorsed by or supported by any vehicle manufacturer, equipment
+> supplier or their partners.
+>
+> Everything in this repository is provided "as is", without warranty of any kind. Changing a vehicle's software,
+> electronics or displays can cause malfunctions, distract the driver, void warranties, break local regulations
+> and create safety risks. I am not liable for any damage, injury, loss or other consequence arising from the use
+> or misuse of anything in this repository. **I do not recommend that anyone try this on their own vehicle**; if
+> you do, you do so entirely at your own risk.
+
+## This fork
+
+[eroobeeroo/idrive-apps](https://github.com/eroobeeroo/idrive-apps) is
+[robertnisipeanu/idrive-apps](https://github.com/robertnisipeanu/idrive-apps) as it is (the cluster renderer
+included, unchanged), with two additions to Waze on cluster and its app:
+
+- **HUD edge fade** (a button on the app's page: Off, Soft, Medium, Strong): the HUD map's edges feathered to
+  black, which the HUD shows as nothing, so the map melts away instead of ending in a hard rectangle.
+- **Pause map** (a checkbox): the map hidden on the cluster and the HUD and no frames sent until it is
+  unticked, kept across restarts.
+
+Both are saved per driver profile with the other map settings. Its versions sit above the original's
+(waze-on-cluster 0.9.105 on 0.9.5, the app 0.6.104 on 0.6.4), so the Store installs them from here where both
+repositories are sources; everything else comes from the original.
+
 Tools and apps for the iDrive 7 head unit (MGU) of a BMW, installed from the
 [mgu Store](https://github.com/robertnisipeanu/mgu-store).
 
