@@ -9,7 +9,7 @@
  * reports its status and log to the Waze app.
  *
  *   waze-on-cluster [-c FILE] [-s key=value]...     serve the control socket
- *   waze-on-cluster [-c FILE] run sail|map|panel|hud
+ *   waze-on-cluster [-c FILE] run sail|map|panel
  *                                                   map that target from now on,
  *                                                   and follow the status from a shell
  *                                                   (sail = map, the native central-map slot)
@@ -46,6 +46,7 @@
 #include "map_feed.h"
 #include "map_feeds.h"
 #include "map_geometry.h"
+#include "map_state.h"
 #include "refused.h"
 #include "video_producer.h"
 #include "yuv_atlas.h"
@@ -81,12 +82,13 @@ std::string status_line(const FeedStatus &s)
            ",\"page\":" + json_escape(s.page) + ",\"reason\":" + json_escape(s.reason) +
            ",\"upload_cap_kb_per_s\":" + std::to_string(s.upload_cap_kb) +
            ",\"upload_reason\":" + json_escape(s.upload_reason) +
+           ",\"hide_bmw_guidance\":" + (s.guide_hold ? "1" : "0") +
+           ",\"guide_disabled\":" + (s.guide_disabled ? "1" : "0") +
+           ",\"cluster\":" + (s.cluster ? "1" : "0") +
+           ",\"hud\":" + (s.hud ? "1" : "0") + ",\"hud_state\":" + json_escape(s.hud_state) +
            ",\"hud_width_pct\":" + std::to_string(s.hud_width_pct) +
            ",\"hud_x\":" + std::to_string(s.hud_offset_x) + ",\"hud_y\":" + std::to_string(s.hud_offset_y) +
-           ",\"hud_edge_fade_pct\":" + std::to_string(s.hud_edge_fade_pct) +
-           ",\"paused\":" + (s.paused ? "1" : "0") +
-           ",\"hide_bmw_guidance\":" + (s.guide_hold ? "1" : "0") +
-           ",\"guide_disabled\":" + (s.guide_disabled ? "1" : "0") + "}";
+           ",\"hud_edge_fade_pct\":" + std::to_string(s.hud_edge_fade_pct) + ",\"paused\":" + (s.paused ? "1" : "0") + "}";
 }
 
 class Server : public Control::Handler {
@@ -94,32 +96,50 @@ public:
     Server(MapFeeds *feeds, GuideSetting *guide) : feeds_(feeds), guide_(guide) {}
     void set_control(Control *c) { control_ = c; }
 
-    /* start picks where the map goes (`run`, or the app's display choice):
-     * "map", "hud" or "map+hud"; the map itself comes and goes with the
-     * stream. guide is the app's switch for BMW's turn box
-     * (guide_setting.h); hud the HUD map's size, place and edge fade. */
+    /* start picks the cluster target the map goes to (`run`); cluster and
+     * hud turn the map on each off or on ("on"), hud also sizes and places
+     * the HUD's; the map itself
+     * comes and goes with the stream. guide is the app's switch for BMW's
+     * turn box (guide_setting.h). */
     void on_command(const std::map<std::string, std::string> &msg) override
     {
         const std::string &cmd = msg.at("cmd");
         auto it = msg.find("target");
-        auto pct = msg.find("hud_width_pct");
-        auto hx = msg.find("hud_x"), hy = msg.find("hud_y");
-        auto fade = msg.find("hud_edge_fade_pct");
         auto hide = msg.find("hide");
-        auto on = msg.find("on");
+        auto pct = msg.find("hud_width_pct");
+        auto hx = msg.find("hud_x"), hy = msg.find("hud_y"), on = msg.find("on");
+        auto fade = msg.find("hud_edge_fade_pct");
         if (cmd == "start" && it != msg.end()) {
             log_info("start %s", it->second.c_str());
-            if (!feeds_->set_targets(it->second))
-                log_warn("start: the cluster renderer has no target %s", it->second.c_str());
+            if (!feeds_->set_target(it->second))
+                log_warn("start: the cluster renderer has no cluster target %s", it->second.c_str());
+        } else if (cmd == "guide" && hide != msg.end() && guide_->set(hide->second)) {
+            log_info("guide: BMW's turn box %s while the map shows", guide_->hide() ? "hidden" : "shown");
+            feeds_->set_guide_hold(guide_->hide());
+        } else if (cmd == "cluster" && on != msg.end() && (on->second == "0" || on->second == "1")) {
+            feeds_->set_cluster(on->second == "1");
         } else if (cmd == "pause" && on != msg.end() && (on->second == "0" || on->second == "1")) {
             /* the app's Pause map: the map hidden and no frames sent until resumed (patchd saves it) */
             log_info("pause: map %s", on->second == "1" ? "paused" : "resumed");
             feeds_->set_paused(on->second == "1");
-        } else if (cmd == "guide" && hide != msg.end() && guide_->set(hide->second)) {
-            log_info("guide: BMW's turn box %s while the map shows", guide_->hide() ? "hidden" : "shown");
-            feeds_->set_guide_hold(guide_->hide());
-        } else if (cmd == "hud" && (pct != msg.end() || hx != msg.end() || hy != msg.end() || fade != msg.end())) {
-            /* the HUD map's size: 0 (the default box) or 20-100 % of its width */
+        } else if (cmd == "hud" &&
+                   (on != msg.end() || pct != msg.end() || hx != msg.end() || hy != msg.end() || fade != msg.end())) {
+            /* its edges feathered: 0 (off) to 30 % of its height */
+            if (fade != msg.end()) {
+                const long f = std::strtol(fade->second.c_str(), nullptr, 10);
+                if (f >= 0 && f <= (long)kHudMaxEdgeFadePct) {
+                    log_info("hud: edges fade over %ld%% of the map's height", f);
+                    feeds_->set_hud_edge_fade((unsigned)f);
+                } else {
+                    log_warn("hud: edge fade %s out of range (0-%u)", fade->second.c_str(), kHudMaxEdgeFadePct);
+                }
+            }
+            if (on != msg.end()) {
+                if (on->second == "0" || on->second == "1")
+                    feeds_->set_hud(on->second == "1");
+                else
+                    log_warn("hud: on must be 0 or 1, not %s", on->second.c_str());
+            }
             if (pct != msg.end()) {
                 const long v = std::strtol(pct->second.c_str(), nullptr, 10);
                 if (v == 0 || (v >= 20 && v <= 100)) {
@@ -138,16 +158,6 @@ public:
                     feeds_->set_hud_offset((int)x, (int)y);
                 } else {
                     log_warn("hud: offset %ld,%ld out of range (-800..800)", x, y);
-                }
-            }
-            /* and its edges feathered: 0 (off) to 30 % of its height */
-            if (fade != msg.end()) {
-                const long f = std::strtol(fade->second.c_str(), nullptr, 10);
-                if (f >= 0 && f <= (long)kHudMaxEdgeFadePct) {
-                    log_info("hud: edges fade over %ld%% of the map's height", f);
-                    feeds_->set_hud_edge_fade((unsigned)f);
-                } else {
-                    log_warn("hud: edge fade %s out of range (0-%u)", fade->second.c_str(), kHudMaxEdgeFadePct);
                 }
             }
         } else {
@@ -185,10 +195,11 @@ private:
     std::string last_;
 };
 
-int serve(const Config &cfg)
+int serve(Config cfg)
 {
     if (cfg.has("log_file"))
         log_to_file(cfg.str("log_file"), log_file_cap(cfg.num("log_file_kb")), "waze-on-cluster", WOC_VERSION);
+    load_map_state(&cfg, cfg.str("map_state_file"));
     VideoConfig vc;
     vc.fifo_path = cfg.str("fifo_path");
     vc.carplay_group = cfg.str("carplay_group");
@@ -211,16 +222,21 @@ int serve(const Config &cfg)
                      "(upload_kb_per_s in /var/opt/cluster-render/cluster-render.local.conf)", key, cfg.str(key).c_str());
     struct Range { const char *key; long lo, hi; } ranges[] = {
         {"dirty_threshold", 0, 64}, {"dirty_settle_ms", 0, 3600000}, {"tex_level_bits", 0, 3},
-        {"target_fps", 0, 60},      {"hud_width_pct", 0, 100},      {"hud_offset_x", -800, 800},      {"hud_offset_y", -800, 800},      {"hud_scale_down", 0, 1},      {"hud_round_corners", 0, 1},      {"hud_black_background", 0, 1},      {"hud_edge_fade_pct", 0, 30},      {"map_paused", 0, 1},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
+        {"target_fps", 0, 60},      {"pan_blocks", 0, 1},            {"stall_ms", 1000, 600000},
+        {"cluster", 0, 1},          {"hud", 0, 1},                   {"hud_fps", 1, 30},
+        {"hud_width_pct", 0, 100},  {"hud_offset_x", -800, 800},     {"hud_offset_y", -800, 800},
+        {"hud_scale_down", 0, 1},   {"hud_round_corners", 0, 1},     {"hud_black_background", 0, 1},
+        {"hud_edge_fade_pct", 0, 30}, {"map_paused", 0, 1},
         {"freeze_ms", 0, 600000},   {"freeze_min_fps", 1, 60},       {"alt_screen_port", 0, 65535},
         {"idle_ms", 1000, 600000},  {"blank_ms", 1000, 600000},
-        {"alt_screen_uid", 0, 4294967294L}};
+        {"alt_screen_uid", 0, 4294967294L}, {"gpu_copy", 0, 1}};
     for (const Range &r : ranges)
         if (cfg.num(r.key) < r.lo || cfg.num(r.key) > r.hi) {
             log_error("%s must be from %ld to %ld", r.key, r.lo, r.hi);
             return 1;
         }
     vc.tex_level_bits = (uint32_t)cfg.num("tex_level_bits");
+    vc.gpu_copy = cfg.num("gpu_copy") == 1;
     vc.stall_ms = (int)cfg.num("stall_ms");
     vc.freeze.ms = (unsigned)cfg.num("freeze_ms");
     vc.freeze.min_fps = (unsigned)cfg.num("freeze_min_fps");
@@ -229,7 +245,13 @@ int serve(const Config &cfg)
     FeedConfig fc;
     fc.socket = cfg.str("render_socket");
     fc.target = cfg.str("target");
+    if (const char *why = parse_map_rect(cfg.str("map_rect"), &fc.rect))
+        log_warn("map_rect = %s is ignored: %s; the map area instead", cfg.str("map_rect").c_str(), why);
     fc.hud_width_pct = (unsigned)cfg.num("hud_width_pct");
+    if (fc.hud_width_pct && fc.hud_width_pct < 20) {
+        log_warn("hud_width_pct %u: 0 or 20-100; the default box instead", fc.hud_width_pct);
+        fc.hud_width_pct = 0;
+    }
     fc.hud_offset_x = (int)cfg.num("hud_offset_x");
     fc.hud_offset_y = (int)cfg.num("hud_offset_y");
     fc.scale_down = cfg.num("hud_scale_down") != 0;
@@ -237,12 +259,10 @@ int serve(const Config &cfg)
     fc.hud_black_background = cfg.num("hud_black_background") != 0;
     fc.hud_edge_fade_pct = (unsigned)cfg.num("hud_edge_fade_pct");
     fc.scaled_level_bits = vc.tex_level_bits;
-    if (const char *why = parse_map_rect(cfg.str("map_rect"), &fc.rect))
-        log_warn("map_rect = %s is ignored: %s; the map area instead", cfg.str("map_rect").c_str(), why);
     fc.video.w = vc.tex_width;
     fc.video.h = vc.tex_height;
     fc.video.fps = (unsigned)cfg.num("target_fps");
-    fc.video.level_bits = 0;   /* rounded on the decoder thread (video_producer.h) */
+    fc.video.level_bits = 0;   /* rounded in the decoder's packing (video_producer.h) */
     fc.video.dirty_threshold = (unsigned)cfg.num("dirty_threshold");
     fc.video.settle_ms = (unsigned)cfg.num("dirty_settle_ms");
     fc.video.pan_blocks = cfg.num("pan_blocks") == 1 && vc.tex_height % 4 == 0;
@@ -263,7 +283,7 @@ int serve(const Config &cfg)
 
     std::string err;
     VideoProducer producer(vc);
-    MapFeeds feed(fc);
+    MapFeeds feed(fc, cfg.num("cluster") == 1, cfg.num("hud") == 1, (unsigned)cfg.num("hud_fps"));
     if (cfg.num("map_paused") != 0) {   /* the app's Pause map, saved by patchd */
         log_info("pause: the map starts paused (map_paused = 1)");
         feed.set_paused(true);
@@ -292,10 +312,11 @@ int serve(const Config &cfg)
                                  {producer.ready_fd(), POLLIN, 0}};
         feed.poll_fds(&p);   /* one per target's renderer connection */
         /* A decoded frame wakes it (the producer's ready fd), and so does the
-         * renderer's socket; four times a second otherwise, so the client
-         * retries its connection, a source that is down is retried and the
-         * status files stay current. */
-        int n = poll(p.data(), p.size(), 250);
+         * renderer's socket, and the HUD's next frame when one is due; four
+         * times a second otherwise, so the client retries its connection, a
+         * source that is down is retried and the status files stay current. */
+        const int64_t hud_wake = feed.wake_in_ms(now_ms());
+        int n = poll(p.data(), p.size(), hud_wake >= 0 && hud_wake < 250 ? (int)hud_wake : 250);
         if (n < 0 && errno != EINTR)
             break;
         if (p[0].revents & POLLIN)
@@ -306,8 +327,13 @@ int serve(const Config &cfg)
             control.on_listen_readable();
         const int64_t now = now_ms();
         uint64_t id = 0;
-        if (producer.take(&frame, &id))
-            feed.offer(&frame, id, now);
+        bool same = false;
+        if (producer.take(&frame, &id, &same)) {
+            if (same)
+                feed.repeat(id, now);
+            else
+                feed.offer(&frame, id, now);
+        }
         if (now - alt_read_ms >= 1000) {
             const AltScreen::State s = cfg.num("alt_screen_port") ? alt.read() : AltScreen::Unknown;
             if (s != alt_state)
@@ -318,6 +344,7 @@ int serve(const Config &cfg)
         }
         const bool live = liveness.live(alt_state, producer.last_frame_ms(), now);
         producer.set_live(live, now);
+        producer.set_pictures(feed.wants_frames());
         feed.set_stream(live, producer.frozen(now), producer.picture(now));
         feed.poll(now);
         producer.retry_sources(now);
@@ -333,14 +360,17 @@ int serve(const Config &cfg)
             FrameTally::Minute m;
             StreamHealth::Minute sm;
             Backlog::Minute bm;
+            FrameTiming::Minute tm;
             uint64_t overflows = 0;
-            if (producer.minute(now, &m, &sm, &bm, &overflows))
+            if (producer.minute(now, &m, &sm, &bm, &tm, &overflows)) {
                 log_info("waze: %u frames decoded in the last minute, %u without a picture to catch up, %u changed, "
                          "%u corrupted; the last picture is %s; %u losses (%u packets), %llu dropped by the receive "
                          "queue; packets waited %.1f ms on average, %lld ms at most",
                          m.frames + bm.skipped, bm.skipped, m.changed, sm.corrupted, m.blank ? "blank" : "not blank",
                          sm.losses, sm.lost, (unsigned long long)overflows, bm.wait_us.mean() / 1000.0,
                          (long long)(bm.wait_us.max / 1000));
+                log_info("waze: %s", FrameTiming::describe(tm).c_str());
+            }
             producer.track_keyframe_wait(now);
             const std::string detail = producer.stream_detail();
             if (producer.stream_lost() && detail != last_detail)
@@ -409,7 +439,7 @@ bool load_local(Config *cfg, std::string *err)
 void usage()
 {
     std::fprintf(stderr,
-                 "usage: waze-on-cluster [-c FILE] [-s key=value]... [run sail|map|panel|hud | bench-pack I420_FILE]\n");
+                 "usage: waze-on-cluster [-c FILE] [-s key=value]... [run sail|map|panel | bench-pack I420_FILE]\n");
 }
 
 /* Times pan_blocks' packing (4:2:0 to RGB and the block fit) of each
@@ -485,7 +515,14 @@ void define_keys(Config *cfg)
     cfg->define("target_fps", "30");
     cfg->define("pan_blocks", "1");
     cfg->define("tex_level_bits", "2");
+    cfg->define("gpu_copy", "1");
     cfg->define("target", "map");
+    cfg->define("hide_bmw_guidance", "1");
+    cfg->define("state_file", "/var/opt/waze-on-cluster/state/waze-on-cluster.state.conf");
+    cfg->define("map_state_file", "/var/opt/waze-on-cluster/map.state.conf");
+    cfg->define("cluster", "1");
+    cfg->define("hud", "0");
+    cfg->define("hud_fps", "10");
     cfg->define("hud_width_pct", "0");
     cfg->define("hud_offset_x", "0");
     cfg->define("hud_offset_y", "0");
@@ -494,8 +531,6 @@ void define_keys(Config *cfg)
     cfg->define("hud_black_background", "1");
     cfg->define("hud_edge_fade_pct", "0");
     cfg->define("map_paused", "0");
-    cfg->define("hide_bmw_guidance", "1");
-    cfg->define("state_file", "/var/opt/waze-on-cluster/state/waze-on-cluster.state.conf");
     cfg->define("render_socket", "/dev/shm/cluster-render/render.sock");
     cfg->define("log_file", "/var/opt/waze-on-cluster/log/waze-on-cluster.log");
     cfg->define("log_file_kb", "512");

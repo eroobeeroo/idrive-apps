@@ -149,9 +149,6 @@ Holder SlotManager::other_holder(int i) const
     return s ? holder_of(s->content) : Holder::None;
 }
 
-/* A slot the table names as someone else's is not asked for, unless a
- * contending layer takes it from the stock HMI: the target waits for it to
- * be free. */
 static const char kPopupReason[] = "a stock pop-up shows in its place";
 
 bool SlotManager::popup_blocks(int i, int64_t now_ms)
@@ -191,6 +188,9 @@ bool SlotManager::popup_blocks(int i, int64_t now_ms)
     return false;
 }
 
+/* A slot the table names as someone else's is not asked for, unless a
+ * contending layer takes it from the stock HMI: the target waits for it to
+ * be free. */
 bool SlotManager::yields(int i, int64_t now_ms)
 {
     const Holder h = other_holder(i);
@@ -463,6 +463,24 @@ void SlotManager::drop_scene(int i)
     t_[i].resend_due = false;
 }
 
+void SlotManager::republish(int i, int64_t now_ms)
+{
+    const TargetSpec &spec = specs_[i];
+    Target &t = t_[i];
+    log_info("target %s: its scene file replaced: scene 0x%llx published again in place, the slot kept",
+             spec.name.c_str(), (unsigned long long)spec.scene_id);
+    scenes_->unpublish(spec);
+    subs_[spec.scene_id] = Subscribers();   /* its renderer subscribes again */
+    t.scene_ms = now_ms;
+    std::string err;
+    if (scenes_->publish(spec, &err))
+        return;
+    t.scene = false;
+    subs_.erase(spec.scene_id);
+    take_down(i, now_ms);
+    wait(i, Holder::None, true, "scene: " + err, now_ms);
+}
+
 void SlotManager::unpublish_all()
 {
     for (size_t i = 0; i < t_.size(); i++)
@@ -582,11 +600,12 @@ void SlotManager::on_availability(bool up, int64_t now_ms)
     }
     available_since_ms_ = -1;
     released_.clear();
-    /* A cluster restart takes the display service with it: a hold mapped
-     * within the window is the likely cause, else the target mapped last. */
+    /* A cluster restart takes the display service with it: a mapping the
+     * guard can disable (a hold, the HUD) mapped within the window is the
+     * likely cause, else the target mapped last. */
     int last = -1;
     for (size_t i = 0; i < t_.size(); i++) {
-        const bool hold = !specs_[i].follows.empty(), last_hold = last >= 0 && !specs_[last].follows.empty();
+        const bool hold = specs_[i].strike_limit > 0, last_hold = last >= 0 && specs_[last].strike_limit > 0;
         if (now_ms - t_[i].mapped_ms <= Guard::kWindowMs &&
             (last < 0 || (hold && !last_hold) || (hold == last_hold && t_[i].mapped_seq > t_[last].mapped_seq)))
             last = (int)i;
@@ -799,8 +818,8 @@ void SlotManager::on_lost(uint64_t scene_id, const std::string &why, int64_t now
      * lock (the slot reported disabled: a door-open warning). */
     const bool removal = (s == TargetState::Shown || s == TargetState::Lingering) && !locked(i);
     if (s == TargetState::Lingering) {
-        if (h == Holder::None && !ours_named && removal && on_evidence)
-            on_evidence(Evidence::Removal, specs_[i].name + ": " + why, now_ms);
+        if (h == Holder::None && !ours_named && removal)
+            removal_evidence(i, why, now_ms);
         set(i, TargetState::Idle, Holder::None, "", now_ms);
         return;
     }
@@ -850,6 +869,14 @@ bool SlotManager::lock_holds(int i, int64_t now_ms)
     return true;
 }
 
+void SlotManager::removal_evidence(int i, const std::string &why, int64_t ms)
+{
+    if (specs_[i].share)
+        log_info("target %s: %s (the HUD share's: the upload cap stays)", specs_[i].name.c_str(), why.c_str());
+    else if (on_evidence)
+        on_evidence(Evidence::Removal, specs_[i].name + ": " + why, ms);
+}
+
 /* The ladder and the evidence count from lost_ms, when the scene went. */
 void SlotManager::settle_loss(int i, Holder h, bool removal, const std::string &reason, int64_t now_ms,
                               int64_t lost_ms)
@@ -858,8 +885,8 @@ void SlotManager::settle_loss(int i, Holder h, bool removal, const std::string &
     const bool by_display = h == Holder::None && removal && !locked(i);
     t.removed_ms = by_display ? lost_ms : -1;
     t.not_ready = 0;
-    if (by_display && on_evidence)
-        on_evidence(Evidence::Removal, specs_[i].name + ": " + reason, lost_ms);
+    if (by_display)
+        removal_evidence(i, reason, lost_ms);
     if (h == Holder::Foreign || (h == Holder::Stock && !t.contend)) {
         wait(i, h, false, reason, now_ms);
         return;
@@ -1014,6 +1041,20 @@ void SlotManager::tick(int64_t now_ms)
         const int i = (int)k;
         Target &t = t_[i];
         const TargetSpec &spec = specs_[i];
+
+        /* A scene file came or went: published again, the stale scene
+         * shown until then while nothing wants the target (its linger). */
+        if (t.scene && (!t.requested || t.wanted) && scenes_->stale(spec)) {
+            log_info("target %s: a scene file came or went: its scene goes and is published again", spec.name.c_str());
+            if (t.requested)
+                release(i, now_ms);
+            drop_scene(i);
+        } else if (t.scene && scenes_->outdated(spec)) {
+            if (t.requested)
+                republish(i, now_ms);
+            else
+                drop_scene(i);
+        }
         const TargetState s = t.status.state;
 
         if (!up) {
@@ -1040,6 +1081,7 @@ void SlotManager::tick(int64_t now_ms)
                     release(i, now_ms);
                 if (t.status.state != TargetState::Waiting || t.status.reason != kPopupReason)
                     set(i, TargetState::Waiting, Holder::Stock, kPopupReason, now_ms, -1);
+                t.verdict = false;
                 continue;
             }
             if (s == TargetState::Waiting && t.status.reason == kPopupReason) {

@@ -21,7 +21,7 @@ const path = require('path');
 
 const HERE = path.join(__dirname, '..');
 const SRC = path.join(HERE, 'src');
-const TREE = path.join(HERE, fs.readdirSync(HERE).find((n) => /^robertn_waze_cluster@\d+\.\d+\.\d+$/.test(n)));
+const TREE = path.join(HERE, JSON.parse(fs.readFileSync(path.join(HERE, 'mgu-app.json'), 'utf8')).tree);
 const locales = require('./gen_locales.js');
 const i18n = require(path.join(SRC, 'i18n.js'));
 
@@ -53,7 +53,7 @@ Object.values(require(path.join(SRC, 'waze_cluster_control.js')).RESTART_FAILED)
 Object.values(require(path.join(SRC, 'logs_control.js')).ERRORS).forEach((w) => used.add(w));
 Object.values(locales.RHMI_TEXTS).forEach((w) => used.add(w));
 ok(used.size > 40, `the app's words (${used.size})`);
-['Status: {0}', 'Patched', 'Restart: {0}', 'Save logs', 'Waze on cluster', 'the head unit stayed on', 'Not enough space']
+['Status: {0}', 'Patched', 'Restart: {0}', 'Save logs', 'Waze on cluster', 'the head unit stayed on', 'Not enough space', 'HUD map: {0}', 'Move left']
     .forEach((w) => ok(used.has(w), `"${w}" is a key`));
 
 /* ---- each locale ---- */

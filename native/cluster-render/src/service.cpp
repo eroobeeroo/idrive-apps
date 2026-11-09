@@ -21,6 +21,7 @@ Service::Service(Gpu *gpu, Port *port, const ServiceConfig &cfg) : cfg_(cfg), sl
     }
     comp_.reset(new Compositor(gpu, &slots_, cfg_.budget, cfg_.upload_burst_ms));
     comp_->set_slow_flush_ms(cfg_.slow_flush_ms);
+    comp_->set_file_tick_ms(1000 / std::max(1, cfg_.fps));
     comp_->set_fade_ms(cfg_.fade_ms);
     slots_.set_scenes(comp_.get());
     Governor *gov = &comp_->governor();
@@ -28,6 +29,7 @@ Service::Service(Gpu *gpu, Port *port, const ServiceConfig &cfg) : cfg_(cfg), sl
         gov->evidence(e, now_ms, detail);
     };
     server_.reset(new Server(comp_.get(), &slots_, cfg_.backend));
+    server_->set_scene_files(cfg_.scene_files);
 }
 
 bool Service::start(std::string *err)
@@ -95,10 +97,12 @@ void Service::log_minute(int64_t now_ms)
         /* A layer gone since takes its counts with it. */
         auto since = [](uint64_t now, uint64_t then) { return now >= then ? now - then : now; };
         const std::string rendering = slots_.rendering_text((int)i, now_ms);
-        log_info("target %s: in the last %lld s its layers wrote %llu frames, %llu KB, %llu failed, %llu budget holds; "
-                 "%s",
+        const uint64_t frames = since(w.frames, last.frames);
+        log_info("target %s: in the last %lld s its layers wrote %llu frames (%llu ms from offer to flush on average), "
+                 "%llu KB, %llu failed, %llu budget holds; %s",
                  slots_.targets()[i].name.c_str(), (long long)((now_ms - stats_ms_[i]) / 1000),
-                 (unsigned long long)since(w.frames, last.frames),
+                 (unsigned long long)frames,
+                 (unsigned long long)(frames ? since(w.age_ms, last.age_ms) / frames : 0),
                  (unsigned long long)(since(w.bytes, last.bytes) / 1024),
                  (unsigned long long)since(w.failed, last.failed), (unsigned long long)since(w.holds, last.holds),
                  rendering.c_str());

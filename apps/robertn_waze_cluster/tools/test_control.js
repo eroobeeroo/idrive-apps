@@ -31,14 +31,19 @@
  * or is refused. The capture's texts. The turn box switch: hidden by default, each toggle one guide command to the
  * render and the state as the render reports it, nothing known or sent
  * while closed or with a render that has no switch, nothing sent while the
- * cluster renderer holds the box shown.
+ * cluster renderer holds the box shown. Where the map shows (the cluster,
+ * the HUD or both, never neither) and the HUD's size slider, place and
+ * guard; an asked HUD size the render does not show goes after a moment,
+ * on a failed save and on a render reconnect. CarPlay Wi-Fi: the band patchd reports, 5 GHz or 2.4 GHz, the
+ * line under it on 2.4 GHz only, nothing while the band is unknown, from a
+ * patchd before it, or with patchd gone.
  * The Logs page's client (src/logs_control.js): the socket absent before the
  * logs service runs, Save logs sending one save and the list, the address
  * and the status following the service, its errors, and closing.
  */
 const assert = require('assert');
 const fs = require('fs');
-const { WazeClusterControl, SIZE, SAFE, ZOOM_STEP } = require('../src/waze_cluster_control.js');
+const { WazeClusterControl, SIZE, SAFE, ZOOM_STEP, HUD_SIZE_STEPS } = require('../src/waze_cluster_control.js');
 const { LogsControl } = require('../src/logs_control.js');
 const { FakeRender, FakePatch, FakeLogs, RENDER_PAGE, RENDER_FPS } = require('./fakes.js');
 
@@ -302,7 +307,84 @@ test('the turn card checkbox: the asked card until its change ends; the one on d
     c.close();
 });
 
-/* ---- this fork: the head-up display ---- */
+test('where the map shows: the cluster by default; the HUD and both through the render, patchd saves each change; never neither', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.connectedPatch());
+    patch.res = SIZE;
+    patch.safe = SAFE;
+    patch.announce('patched', 'high', null);
+    render.stream(true);
+    await until('the cluster', () => c.shownOn() === 'cluster' && /^Cluster map: Showing/.test(c.mapText()) && c.hudText() === 'HUD map: Off');
+    assert(c.canChooseShownOn() && !c.canChangeHudSize() && !c.canCentreHud(), 'only the choice while the HUD is off');
+    c.setHudSizeStep(6);
+    c.moveHud('left');
+    c.showOn('cluster');
+    c.showOn('neither');
+    assert.deepStrictEqual(render.received, [], 'nothing sent: the HUD off, the choice as it is, no such choice');
+    c.showOn('hud');
+    assert.deepStrictEqual([c.shownOn(), c.clusterOn(), c.hudOn()], ['hud', false, true], 'chosen at once, before the render answers');
+    await until('the HUD alone', () => render.hud === 1 && render.cluster === 0 && c.renderStatus.hud === 1 &&
+        c.hudText() === 'HUD map: Showing' && c.mapText() === 'Cluster map: Off');
+    assert.deepStrictEqual(render.received, [{ cmd: 'hud', on: '1' }, { cmd: 'cluster', on: '0' }], 'the HUD on before the cluster off');
+    assert(c.canChangeHudSize(), 'the size and place while on');
+    c.showOn('both');
+    await until('both', () => render.cluster === 1 && c.shownOn() === 'both' && /^Cluster map: Showing/.test(c.mapText()));
+    c.showOn('cluster');
+    await until('the cluster again', () => render.hud === 0 && c.shownOn() === 'cluster' && c.hudText() === 'HUD map: Off');
+    assert.deepStrictEqual(render.received.slice(2), [{ cmd: 'cluster', on: '1' }, { cmd: 'hud', on: '0' }], 'only what changes');
+    await until('each saved', () => patch.received.filter((m) => /^(cluster|hud)$/.test(m.cmd)).length === 4);
+    assert.deepStrictEqual(patch.received.filter((m) => /^(cluster|hud)$/.test(m.cmd)),
+        [{ cmd: 'hud', on: 1 }, { cmd: 'cluster', on: 0 }, { cmd: 'cluster', on: 1 }, { cmd: 'hud', on: 0 }]);
+    /* a render on neither (its own configuration): no choice to show, one to make */
+    render.cluster = 0;
+    render.announce(render.state, render.reason);
+    await until('neither', () => c.shownOn() === null && c.canChooseShownOn());
+    c.close();
+    assert(!c.canChooseShownOn(), 'no choice while the render is not connected');
+    assert.deepStrictEqual([c.shownOn(), c.hudText()], [null, 'HUD map: Unavailable']);
+});
+
+test('the HUD disabled by the cluster renderer: Disabled after errors, the size and place greyed, the choice kept', async (render, patch) => {
+    render.hud = 1;
+    render.hudState = 'disabled';
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.renderStatus);
+    render.stream(true);
+    await until('disabled', () => c.hudText() === 'HUD map: Disabled after errors');
+    assert(c.shownOn() === 'both' && c.canChooseShownOn() && !c.canChangeHudSize() && !c.canCentreHud());
+    c.setHudSizeStep(6);
+    assert(!render.received.some((m) => m.cmd === 'hud'), 'no size sent while disabled');
+    c.showOn('cluster');
+    await until('the cluster', () => render.hud === 0 && c.shownOn() === 'cluster');
+    c.showOn('both');
+    await until('both again', () => render.received.filter((m) => m.cmd === 'hud').length === 2 && render.hud === 1);
+    await until('still disabled', () => c.hudText() === 'HUD map: Disabled after errors');
+    c.close();
+});
+
+/* this fork */
+test('HUD edge fade steps Off, Soft, Medium, Strong only while the map is on the HUD; the render applies it, patchd saves it', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.connectedRender() && c.connectedPatch());
+    render.stream(true);
+    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
+    c.cycleHudFade();
+    assert(!render.received.some((m) => m.cmd === 'hud' && m.hud_edge_fade_pct !== undefined), 'nothing sent while not on the HUD');
+    c.showOn('hud');
+    await until('on the HUD', () => c.canChangeHudSize());
+    assert.strictEqual(c.hudFadeText(), 'HUD edge fade: Off');
+    for (const [pct, label] of [[8, 'Soft'], [15, 'Medium'], [25, 'Strong'], [0, 'Off']]) {
+        c.cycleHudFade();
+        assert.strictEqual(c.hudFadeText(), `HUD edge fade: ${label}`, 'shown at once');
+        await until(label, () => render.hudFade === pct && c.renderStatus.hud_edge_fade_pct === pct);
+        await until('saved', () => { const p = patch.received.filter((m) => m.cmd === 'hud-fade').slice(-1)[0]; return p && p.hud_edge_fade_pct === pct; });
+    }
+    c.close();
+});
+
 test('Pause map: the render hides the map and stops its frames, patchd saves it; resumed the same way', async (render, patch) => {
     const c = control();
     c.open();
@@ -316,8 +398,8 @@ test('Pause map: the render hides the map and stops its frames, patchd saves it;
     c.togglePause();
     await until('resumed', () => render.paused === 0 && c.renderStatus.paused === 0 && c.mapPaused() === false);
     await until('saved again', () => patch.received.filter((m) => m.cmd === 'pause').map((m) => m.on).join() === '1,0');
-    render.paused = null;   /* a tool without Pause map */
-    render._broadcast(Object.assign(render._status(), { paused: undefined }));
+    render.paused = null;   /* a render without Pause map */
+    render._broadcast(render._status());
     await until('not known', () => c.mapPaused() === null && !c.canPause());
     const sent = render.received.filter((m) => m.cmd === 'pause').length;
     c.togglePause();
@@ -326,98 +408,87 @@ test('Pause map: the render hides the map and stops its frames, patchd saves it;
     assert(!c.canPause(), 'nothing while the render is not connected');
 });
 
-test('Show map on switches Cluster and HUD: the render moves, patchd saves it', async (render, patch) => {
+test('the HUD map size as a slider: 5 % steps from 30 to 85 %, Standard at the step below its ~57 %', async (render, patch) => {
+    render.hud = 1;
     const c = control();
     c.open();
     await until('connected', () => c.connectedRender() && c.connectedPatch());
     render.stream(true);
-    await until('showing on the cluster', () => c.renderStatus && c.renderStatus.state === 'showing' &&
-        c.displayText() === 'Show map on: Cluster');
-    assert(c.canChangeDisplay());
-    c.cycleDisplay();
-    assert.strictEqual(c.displayText(), 'Show map on: HUD', 'shown at once, before the render answers');
-    await until('render on the HUD', () => render.target === 'hud' && c.renderStatus.target === 'hud');
-    c.cycleDisplay();
-    await until('back to the cluster', () => render.target === 'map' && c.displayText() === 'Show map on: Cluster');
-    assert.deepStrictEqual(render.received.filter((m) => m.cmd === 'start').map((m) => m.target), ['hud', 'map']);
-    await until('saved', () => patch.received.filter((m) => m.cmd === 'target').length === 2);
-    assert.deepStrictEqual(patch.received.filter((m) => m.cmd === 'target').map((m) => m.target), ['hud', 'map']);
-    /* an older saved choice of both: shown as the cluster, the next press picks the HUD alone */
-    render._set(render.state, 'map+hud', render.page, render.reason);
-    await until('both reads as the cluster', () => c.renderStatus.target === 'map+hud' && c.displayText() === 'Show map on: Cluster');
-    c.cycleDisplay();
-    await until('then the HUD alone', () => render.target === 'hud');
-    c.close();
-    assert(!c.canChangeDisplay(), 'no change while the render is not connected');
-});
-
-test('HUD map larger / smaller in 5 % steps from 30 to 85 %, from Standard the steps next to its ~57 %', async (render, patch) => {
-    const c = control();
-    c.open();
-    await until('connected', () => c.connectedRender() && c.connectedPatch());
-    render.stream(true);
-    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
-    c.stepHudSize(1);
-    assert(!render.received.some((m) => m.cmd === 'hud'), 'nothing sent while not on the HUD');
-    c.cycleDisplay();
-    await until('on the HUD', () => render.target === 'hud' && c.canChangeHudSize());
-    assert.strictEqual(c.hudLargerText(), 'HUD map larger (now Standard)');
-    c.stepHudSize(1);
+    await until('on', () => c.renderStatus && c.canChangeHudSize());
+    assert.deepStrictEqual([c.hudSizeText(), c.hudSizeStep()], ['Size: Standard', 5], 'Standard at 55 %');
+    c.setHudSizeStep(6);
+    assert.deepStrictEqual([c.hudSizeText(), c.hudSizeStep()], ['Size: 60 %', 6], 'shown at once');
     await until('60 %', () => render.hudWidth === 60 && c.renderStatus.hud_width_pct === 60);
-    assert.strictEqual(c.hudLargerText(), 'HUD map larger (now 60 %)');
-    for (let i = 0; i < 6; i++) { c.stepHudSize(1); await until('step', () => c.renderStatus.hud_width_pct === Math.min(85, 65 + i * 5)); }
-    assert(c.renderStatus.hud_width_pct === 85 && !c.canHudLarger() && c.canHudSmaller(), 'held at 85 %');
-    const sent = render.received.filter((m) => m.cmd === 'hud').length;
-    c.stepHudSize(1);
-    assert.strictEqual(render.received.filter((m) => m.cmd === 'hud').length, sent, 'no request past the widest');
-    for (let i = 0; i < 12; i++) { c.stepHudSize(-1); await until('step down', () => c.renderStatus.hud_width_pct === Math.max(30, 80 - i * 5)); }
-    assert(c.renderStatus.hud_width_pct === 30 && !c.canHudSmaller(), 'held at 30 %');
-    await until('each one saved', () => patch.received.filter((m) => m.cmd === 'hud-size').slice(-1)[0].hud_width_pct === 30);
+    c.setHudSizeStep(HUD_SIZE_STEPS);
+    await until('85 %', () => c.renderStatus.hud_width_pct === 85 && c.hudSizeStep() === HUD_SIZE_STEPS);
+    c.setHudSizeStep(0);
+    await until('30 %', () => c.renderStatus.hud_width_pct === 30 && c.hudSizeText() === 'Size: 30 %');
+    const sent = render.received.length;
+    [-1, HUD_SIZE_STEPS + 1, 2.5, '3', 0].forEach((step) => c.setHudSizeStep(step));
+    assert.strictEqual(render.received.length, sent, 'nothing sent past either end, between steps or for the same step');
+    await until('each one saved', () => patch.received.filter((m) => m.cmd === 'hud-size').map((m) => m.hud_width_pct).join() === '60,85,30');
     c.close();
+    assert.deepStrictEqual([c.hudSizeText(), c.hudSizeStep()], ['Size: —', null], 'nothing known while closed');
 });
 
-test('Move HUD map: 10 px a press each way, Centre back; the render moves it and patchd saves it', async (render, patch) => {
+test('an asked HUD size the render does not show: the render\'s own after a moment, at once on a render reconnect; ' +
+    'the same step taken again', async (render, patch) => {
+    render.hud = 1;
+    render.hudWidth = 50;
+    const c = control();
+    c.open();
+    await until('on', () => c.renderStatus && c.canChangeHudSize() && c.hudSizeText() === 'Size: 50 %');
+    /* a render that takes no size */
+    const take = render._onCommand.bind(render);
+    render._onCommand = (msg) => (msg.cmd === 'hud' && msg.hud_width_pct !== undefined ? render.received.push(msg) : take(msg));
+    const asked = () => render.received.filter((m) => m.cmd === 'hud' && m.hud_width_pct !== undefined).length;
+    c.setHudSizeStep(6);
+    assert.strictEqual(c.hudSizeText(), 'Size: 60 %', 'shown at once');
+    await until('the render\'s own again', () => c.hudSizeText() === 'Size: 50 %');
+    c.setHudSizeStep(6);
+    assert.strictEqual(c.hudSizeText(), 'Size: 60 %');
+    await until('the same step taken again', () => asked() === 2);
+    let t0 = Date.now();
+    render.dropClients();
+    await until('the render reconnecting: nothing asked kept', () => c.hudSizeText() === 'Size: —');
+    assert(Date.now() - t0 < 250, 'at once, not after the wait');
+    await until('the render\'s own after it reconnects', () => c.hudSizeText() === 'Size: 50 %');
+    c.setHudSizeStep(6);
+    await until('taken again after the reconnect', () => asked() === 3);
+    c.close();
+    assert.deepStrictEqual([c.hudSizeText(), c.hudSizeStep()], ['Size: —', null], 'nothing asked kept while closed');
+});
+
+test('the HUD map position: 10 px a press each way, Centre back; the render moves it and patchd saves it', async (render, patch) => {
+    render.hud = 1;
     const c = control();
     c.open();
     await until('connected', () => c.connectedRender() && c.connectedPatch());
     render.stream(true);
-    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
-    c.moveHud('left');
-    assert(!render.received.some((m) => m.cmd === 'hud'), 'nothing while not on the HUD');
-    c.cycleDisplay();
-    await until('on the HUD', () => render.target === 'hud' && c.canChangeHudSize());
-    assert.strictEqual(c.centreHudText(), 'Centre HUD map (centred now)');
+    await until('on', () => c.renderStatus && c.canChangeHudSize());
+    assert.strictEqual(c.hudPositionText(), 'Position: Centre');
+    assert(!c.canCentreHud(), 'Centre greyed while centred');
     c.moveHud('right'); c.moveHud('right'); c.moveHud('up');
     await until('moved', () => c.renderStatus.hud_x === 20 && c.renderStatus.hud_y === -10);
-    assert.strictEqual(c.centreHudText(), 'Centre HUD map (now 20 px right, 10 px up)');
+    assert.strictEqual(c.hudPositionText(), 'Position: 20 px right, 10 px up');
+    assert(c.canCentreHud());
     c.moveHud('down'); c.moveHud('down'); c.moveHud('left');
     await until('moved back past the centre', () => c.renderStatus.hud_x === 10 && c.renderStatus.hud_y === 10);
     await until('saved', () => { const p = patch.received.filter((m) => m.cmd === 'hud-pos').slice(-1)[0]; return p && p.hud_x === 10 && p.hud_y === 10; });
     c.centreHud();
     await until('centred', () => c.renderStatus.hud_x === 0 && c.renderStatus.hud_y === 0);
-    assert.strictEqual(c.centreHudText(), 'Centre HUD map (centred now)');
+    assert.strictEqual(c.hudPositionText(), 'Position: Centre');
     for (let i = 0; i < 50; i++) c.moveHud('left');
     await until('held at the limit', () => c.renderStatus.hud_x === -400);
-    c.close();
-});
-
-test('HUD edge fade steps Off, Soft, Medium, Strong only while the map is on the HUD; the render applies it, patchd saves it', async (render, patch) => {
-    const c = control();
-    c.open();
-    await until('connected', () => c.connectedRender() && c.connectedPatch());
-    render.stream(true);
-    await until('showing', () => c.renderStatus && c.renderStatus.state === 'showing');
-    c.cycleHudFade();
-    assert(!render.received.some((m) => m.cmd === 'hud'), 'nothing sent while not on the HUD');
-    c.cycleDisplay();
-    await until('on the HUD', () => render.target === 'hud' && c.canChangeHudSize());
-    assert.strictEqual(c.hudFadeText(), 'HUD edge fade: Off');
-    for (const [pct, label] of [[8, 'Soft'], [15, 'Medium'], [25, 'Strong'], [0, 'Off']]) {
-        c.cycleHudFade();
-        await until(label, () => render.hudFade === pct && c.renderStatus.hud_edge_fade_pct === pct);
-        assert.strictEqual(c.hudFadeText(), `HUD edge fade: ${label}`);
-        await until('saved', () => { const p = patch.received.filter((m) => m.cmd === 'hud-fade').slice(-1)[0]; return p && p.hud_edge_fade_pct === pct; });
-    }
+    /* the render holds the map inside the HUD: past its edge, the place it reports */
+    render.hudMaxX = 60;
+    c.centreHud();
+    await until('centred again', () => c.renderStatus.hud_x === 0);
+    for (let i = 0; i < 9; i++) c.moveHud('right');
+    assert.strictEqual(c.hudPositionText(), 'Position: 90 px right', 'as asked at first');
+    await until('as far as it goes', () => c.hudPositionText() === 'Position: 60 px right');
+    c.moveHud('left');
+    await until('the next press moves it back at once', () => c.renderStatus.hud_x === 50);
     c.close();
 });
 
@@ -546,7 +617,7 @@ test('installed, before the head-unit start: the marker shows the pending patch,
     c.close();
 });
 
-test('a pending apply from the daemon: its line, a restart, Patch and Remove patch greyed', async (render, patch) => {
+test('a pending apply from the daemon: its line, a restart, Patch greyed and Remove patch offered; a pending removal greys both', async (render, patch) => {
     const c = control();
     c.open();
     await until('connected', () => c.connectedPatch());
@@ -554,7 +625,7 @@ test('a pending apply from the daemon: its line, a restart, Patch and Remove pat
     patch.announce('unknown', 'high', 'patch written; takes effect at the next head-unit start', 'deferred');
     await until('pending', () => c.statusText() === 'Status: Patched after restart');
     assert.strictEqual(c.canEnable(), false);
-    assert.strictEqual(c.canDisable(), false);
+    assert.strictEqual(c.canDisable(), true);
     assert.strictEqual(c.restartNeeded(), true);
     patch.pending = 'revert';
     patch.announce('unknown', null, 'patch removed; the original carplay runs from the next head-unit start', 'deferred');
@@ -601,11 +672,12 @@ test('a conflict the install left alone is shown, and CarPlay\'s Patch button st
     c.close();
 });
 
-test('a head unit that refuses the tool: not supported in both sections, also patched or with an apply pending; no Patch, zoom or card; the map unavailable; the turn box greyed', async (render, patch) => {
+test('a head unit that refuses the tool: not supported in both sections, also patched or with an apply pending; no Patch, zoom or card; the map unavailable; the turn box and the HUD greyed', async (render, patch) => {
     const NOT = 'not supported on this car (head unit: unknown variant is not supported (no hwvariant= on the kernel command line))';
     const D = [150, 400, 10];
     render.hide = null;
     render.guideDisabled = 1;
+    render.hud = null;
     const c = control();
     c.open();
     await until('connected', () => c.aa() && c.connectedRender());
@@ -635,10 +707,17 @@ test('a head unit that refuses the tool: not supported in both sections, also pa
     await until('pending, not supported', () => c.canRestart());
     assert.deepStrictEqual([c.statusText(), c.aaStatusText()], ['Status: Not supported on this car', 'Status: Not supported on this car']);
     patch.pending = null;
+    assert.strictEqual(c.hudText(), 'HUD map: Unavailable');
+    assert.deepStrictEqual([c.canChooseShownOn(), c.canChangeHudSize(), c.canCentreHud()], [false, false, false],
+        'the choice and the HUD rows greyed');
     c.enableMap();
     c.toggleGuidance();
+    c.showOn('hud');
+    c.setHudSizeStep(6);
+    c.moveHud('left');
     await sleep(50);
     assert.strictEqual(patch.count('apply'), 0);
+    assert.strictEqual(patch.count('cluster') + patch.count('hud') + patch.count('hud-size') + patch.count('hud-pos'), 0, 'nothing saved');
     assert.deepStrictEqual(render.received, []);
     c.close();
 });
@@ -742,7 +821,10 @@ test('Android Auto: its line per state; Patch, Remove patch and zoom only where 
         [{ state: 'patched', dpi: 400, diskCard: 'shown', density: 400, densities: D }, 'Status: Patched', [false, true, true, false]],
         [{ state: 'unknown', density: 180, densities: D }, 'Status: Partly patched', [true, true, false, false]],
         [{ state: 'original', density: 180, conflict: 'not supported on this car (KI_KOMBI_VARIANT 9)' }, 'Status: Not supported on this car', [false, false, false, false]],
-        [{ state: 'original', density: 180, conflict: 'untested aapd build' }, 'Status: Untested version', [false, false, false, false]],
+        [{ state: 'original', density: 180, conflict: 'untested aapd build' }, 'Status: Untested version', [true, false, false, false]],
+        [{ state: 'original', density: 180, conflict: 'not patchable: gate: variant check not found' }, 'Status: Not supported on this car', [false, false, false, false]],
+        [{ state: 'original', density: 180, conflict: 'aapd.conf not usable: no number SCREENS/KOMBI_DISPLAY/DIMENSIONS/12.3/SA_WIDTHPIXELS' }, 'Status: Changed by another tool', [false, false, false, false]],
+        [{ state: 'original', density: 180, conflict: 'aapd.service starts /opt/other/aapd (/etc/systemd/system/aapd.service.d/x.conf)' }, 'Status: Changed by another tool', [false, false, false, false]],
         [{ state: 'absent', conflict: 'no Android Auto on this head unit' }, 'Status: Not supported on this car', [false, false, false, false]],
         [{ state: 'unknown', pending: 'apply', aapd: 'deferred', density: 180 }, 'Status: Patched after restart', [false, false, false, false]],
         [{ state: 'unknown', pending: 'revert', aapd: 'deferred', density: 180 }, 'Status: Removed after restart', [false, false, false, false]],
@@ -780,6 +862,83 @@ test('Android Auto: its line per state; Patch, Remove patch and zoom only where 
         [{ cmd: 'aa-density', value: 170 }, { cmd: 'aa-card', value: 'hidden' }, { cmd: 'aa-revert' }, { cmd: 'aa-apply' }]);
     c.close();
     assert.deepStrictEqual([c.zoomText(), c.cardText(), c.cardHidden()], ['Zoom: —', "Hide phone's turn card", false], 'no value while closed');
+});
+
+test('Remove patch while something of ours is on disk, pending too; greyed otherwise and while any change runs', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.aa());
+    const cases = [
+        [{ state: 'unknown', pending: 'apply', carplay: 'deferred', removable: true }, true],
+        [{ state: 'unknown', pending: 'revert', carplay: 'deferred', removable: false }, false],
+        [{ state: 'patched', removable: true }, true],
+        [{ state: 'unknown', removable: true }, true],
+        [{ state: 'error', removable: true }, true],
+        [{ state: 'original', conflict: 'carplay was modified by something else', removable: true }, true],
+        [{ state: 'original', removable: false }, false],
+        [{ state: 'original', removable: undefined }, false],
+        [{ state: 'patched', removable: undefined }, true],
+        [{ state: 'unknown', pending: 'apply', carplay: 'deferred', removable: undefined }, false],
+    ];
+    for (const [s, can] of cases) {
+        patch.pending = s.pending || null;
+        patch.conflict = s.conflict || null;
+        patch.removable = s.removable;
+        patch.announce(s.state, 'high', null, s.carplay);
+        await until(JSON.stringify(s), () => c.patchStatus && c.patchStatus.state === s.state && c.patchStatus.removable === s.removable &&
+            (c.patchStatus.pending || null) === (s.pending || null));
+        assert.strictEqual(c.canDisable(), can, JSON.stringify(s));
+    }
+    const aaCases = [
+        [{ state: 'unknown', pending: 'apply', aapd: 'deferred', density: 180, removable: true }, true],
+        [{ state: 'unknown', pending: 'revert', aapd: 'deferred', density: 180, removable: false }, false],
+        [{ state: 'patched', dpi: 180, diskCard: 'shown', density: 180, removable: true }, true],
+        [{ state: 'original', density: 180, conflict: 'aapd was modified by something else', removable: true }, true],
+        [{ state: 'original', density: 180, removable: false }, false],
+        [{ state: 'busy', reason: 'applying', density: 180, removable: true }, false],
+    ];
+    patch.pending = null;
+    patch.removable = undefined;
+    for (const [aa, can] of aaCases) {
+        patch.aa = aa;
+        patch.announce('original', null, null);
+        await until(JSON.stringify(aa), () => JSON.stringify(c.aa()) === JSON.stringify(aa));
+        assert.strictEqual(c.canDisableAa(), can, JSON.stringify(aa));
+    }
+    patch.aa = { state: 'unknown', pending: 'apply', aapd: 'deferred', density: 180, removable: true };
+    patch.announce('original', null, null);
+    await until('pending', () => c.canDisableAa());
+    c.disableAa();
+    await until('revert sent', () => patch.count('aa-revert') === 1);
+    c.close();
+});
+
+test('Android Auto patched with a conflict patchd refuses changes for: Zoom and the turn card greyed, the conflict named, Remove patch offered', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('connected', () => c.aa());
+    const D = [150, 400, 10];
+    const patched = { state: 'patched', dpi: 180, diskCard: 'shown', density: 180, card: 'shown', densities: D, removable: true };
+    const cases = [
+        [null, true, 'Status: Patched', [false, true, true, true, true]],
+        ['aapd.service starts /opt/other/aapd (/etc/systemd/system/aapd.service.d/x.conf)', true, 'Status: Changed by another tool', [false, true, false, false, false]],
+        ['aapd is another build than our backup', false, 'Status: Changed by another tool', [false, false, false, false, false]],
+        ['not supported on this car (KI_KOMBI_VARIANT 9)', true, 'Status: Not supported on this car', [false, true, false, false, false]],
+        ['cluster coding unreadable', true, 'Status: Unavailable', [false, true, false, false, false]],
+    ];
+    for (const [conflict, removable, line, can] of cases) {
+        const aa = Object.assign({}, patched, { removable }, conflict ? { conflict } : {});
+        patch.aa = aa;
+        patch.announce('patched', 'high', null);
+        await until(`${conflict}`, () => JSON.stringify(c.aa()) === JSON.stringify(aa));
+        assert.strictEqual(c.aaStatusText(), line, `${conflict}`);
+        assert.deepStrictEqual([c.canEnableAa(), c.canDisableAa(), c.canZoom(-10), c.canZoom(10), c.canToggleCard()], can, `${conflict}`);
+    }
+    c.zoom(-10);
+    c.toggleCard();
+    await sleep(100);
+    assert.strictEqual(patch.received.filter((m) => /^aa-(density|card)$/.test(m.cmd)).length, 0, 'a greyed Zoom or turn card sends nothing');
+    c.close();
 });
 
 test('zoom and turn card: the value on disk, "(after restart)" only for the setting that waits, none without the patch', async (render, patch) => {
@@ -1000,6 +1159,44 @@ test('a pending Android Auto change alone offers the restart; CarPlay\'s line is
     assert.strictEqual(c.canRestart(), true);
     c.requestRestart();
     await until('rebooted', () => patch.reboots === 1);
+    c.close();
+});
+
+test('CarPlay Wi-Fi: the band patchd knows, the line to turn the iPhone\'s Wi-Fi off and on on 2.4 GHz only; nothing without either', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('original', () => c.statusText() === 'Status: Not patched');
+    assert.deepStrictEqual([c.wifiBand(), c.wifiText(), c.wifiHint()], [null, '', ''], 'no band');
+    patch.setWifi({ band: '5', iface: 'p2p-wlan0-0', freq: 5785 });
+    await until('5 GHz', () => c.wifiText() === 'CarPlay Wi-Fi: 5 GHz');
+    assert.deepStrictEqual([c.wifiBand(), c.wifiHint()], ['5', '']);
+    patch.setWifi({ band: '2.4', iface: 'p2p-wfd0-1', freq: 2437 });
+    await until('2.4 GHz', () => c.wifiText() === 'CarPlay Wi-Fi: 2.4 GHz');
+    assert.strictEqual(c.wifiHint(), 'Audio may cut out. On your iPhone, turn Wi-Fi off and on.');
+    patch.setWifi({ band: '6', iface: 'p2p-wlan0-0', freq: 5955 });
+    await until('a band the app does not know', () => c.wifiText() === '' && c.wifiHint() === '');
+    patch.setWifi(null);
+    await until('unknown', () => c.wifiBand() === null);
+    patch.setWifi({ band: '2.4', iface: 'p2p-wlan0-1', freq: 2462 });
+    await until('2.4 GHz again', () => c.wifiBand() === '2.4');
+    patch.announce('patched', 'high', null);
+    await until('a status of another change keeps it', () => c.statusText() === 'Status: Patched');
+    assert.strictEqual(c.wifiBand(), '2.4');
+    await patch.close();
+    await until('patchd gone', () => !c.connectedPatch());
+    assert.deepStrictEqual([c.wifiBand(), c.wifiText(), c.wifiHint()], [null, '', ''], 'patchd gone: no band');
+    c.close();
+});
+
+test('CarPlay Wi-Fi from a patchd before it: none', async (render, patch) => {
+    const c = control();
+    c.open();
+    await until('original', () => c.statusText() === 'Status: Not patched');
+    const older = patch._status();
+    delete older.wifi;
+    patch._broadcast(older);
+    await sleep(50);
+    assert.deepStrictEqual([c.wifiBand(), c.wifiText(), c.wifiHint()], [null, '', '']);
     c.close();
 });
 

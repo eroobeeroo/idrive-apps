@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Robert Nisipeanu
 #include "map_feed.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -31,7 +32,8 @@ bool target_size(const std::string &targets, const std::string &name, uint32_t *
 
 }  // namespace
 
-MapFeed::MapFeed(const FeedConfig &cfg) : cfg_(cfg), client_("waze-on-cluster", cfg.socket)
+MapFeed::MapFeed(const FeedConfig &cfg)
+    : cfg_(cfg), client_("waze-on-cluster", cfg.socket), placed_x_(cfg.hud_offset_x), placed_y_(cfg.hud_offset_y)
 {
     client_.on_ready = [this] {
         connected_ = true;
@@ -52,12 +54,11 @@ MapFeed::MapFeed(const FeedConfig &cfg) : cfg_(cfg), client_("waze-on-cluster", 
         layer_reason_ = reason;
     };
     client_.on_target = [this](const std::string &t, const std::string &state, const std::string &holder,
-                               const std::string &reason) {
+                               const std::string &) {
         if (t != cfg_.target)
             return;
         target_state_ = state;
         holder_ = holder;
-        target_reason_ = reason;
     };
     client_.on_budget = [this](unsigned cap, unsigned max, const std::string &reason) {
         cap_kb_ = cap;
@@ -92,15 +93,15 @@ void MapFeed::make_layer()
     else if (cfg_.rect.set())
         log_warn("render: map_rect %u,%u,%u,%u is outside %s (%ux%u); the map area instead", cfg_.rect.x,
                  cfg_.rect.y, cfg_.rect.w, cfg_.rect.h, cfg_.target.c_str(), tw, th);
-    /* Shown smaller than the decoded frame: the frame is scaled to the size
-     * it is shown at (a multiple of 4 wide and high, as the renderer and
-     * packed motion need), drawn 1:1 centred where the quad was. */
+    /* The HUD, shown smaller than the decoded frame: the frame is scaled to
+     * the size it is shown at (a multiple of 4 wide and high, as the
+     * renderer and packed motion need), drawn 1:1 centred where the quad
+     * was. On the cluster the KOMBI scales a map_rect itself. */
     cr::VideoOptions vo = cfg_.video;
     scaling_ = false;
-    pending_ready_ = false;
     const uint32_t sw = q.w & ~3u, sh = q.h & ~3u;
-    if (cfg_.scale_down && (sw < cfg_.video.w || sh < cfg_.video.h) && sw >= 64 && sh >= 32 &&
-        scaler_.configure(cfg_.video.w, cfg_.video.h, sw, sh, cfg_.scaled_level_bits)) {
+    if (cfg_.target == "hud" && cfg_.scale_down && (sw < cfg_.video.w || sh < cfg_.video.h) && sw >= 64 && sh >= 32 &&
+        sw <= cfg_.video.w && sh <= cfg_.video.h) {
         q.x += (q.w - sw) / 2;
         q.y += (q.h - sh) / 2;
         q.w = sw;
@@ -108,9 +109,15 @@ void MapFeed::make_layer()
         vo.w = sw;
         vo.h = sh;
         scaling_ = true;
-        scaler_.set_corner_radius(cfg_.target == "hud" && cfg_.hud_round_corners ? (sh / 12 > 6 ? sh / 12 : 6) : 0);
-        scaler_.set_black_background(cfg_.target == "hud" && cfg_.hud_black_background);
-        scaler_.set_edge_fade(edge_fade_px(sh));
+        shape_ = ScaleShape();
+        shape_.w = cfg_.video.w;
+        shape_.h = cfg_.video.h;
+        shape_.dw = sw;
+        shape_.dh = sh;
+        shape_.level_bits = cfg_.scaled_level_bits;
+        shape_.radius = cfg_.hud_round_corners ? (sh / 12 > 6 ? sh / 12 : 6) : 0;
+        shape_.black = cfg_.hud_black_background;
+        shape_.fade = edge_fade_px(sh);
     }
     lo_ = cr::LayerOptions();
     lo_.target = cfg_.target;
@@ -121,12 +128,12 @@ void MapFeed::make_layer()
     lo_.y = (int)q.y;
     lo_.w = q.w;
     lo_.h = q.h;
-    lo_.visible = visible();
+    lo_.visible = wanted_visible();
+    show_due_ = false;
     refused_.clear();
     layer_state_ = "stalled";
     layer_reason_.clear();
     target_state_.clear();
-    target_reason_.clear();
     holder_.clear();
     layer_ = client_.video(lo_, vo);
     log_info("render: map layer on %s (%ux%u), quad %ux%u at %u,%u%s", cfg_.target.c_str(), tw, th, q.w, q.h, q.x, q.y,
@@ -156,12 +163,14 @@ crk::QuadRect MapFeed::quad(uint32_t tw, uint32_t th) const
     }
     const long x = (long)q.x + cfg_.hud_offset_x, y = (long)q.y + cfg_.hud_offset_y;
     const long xmax = (long)tw - (long)q.w, ymax = (long)th - (long)q.h;
+    const uint32_t cx = q.x, cy = q.y;
     q.x = (uint32_t)(x < 0 ? 0 : x > xmax ? xmax : x);
     q.y = (uint32_t)(y < 0 ? 0 : y > ymax ? ymax : y);
+    placed_x_ = (int)q.x - (int)cx;
+    placed_y_ = (int)q.y - (int)cy;
     return q;
 }
 
-/* The edge fade in output pixels for a map sh high (0 off the HUD). */
 uint32_t MapFeed::edge_fade_px(uint32_t sh) const
 {
     if (cfg_.target != "hud")
@@ -172,21 +181,38 @@ uint32_t MapFeed::edge_fade_px(uint32_t sh) const
 
 void MapFeed::set_hud_edge_fade(unsigned pct)
 {
+    if (pct > kHudMaxEdgeFadePct)
+        pct = kHudMaxEdgeFadePct;
     if (pct == cfg_.hud_edge_fade_pct)
         return;
     cfg_.hud_edge_fade_pct = pct;
     if (!scaling_)
         return;
-    scaler_.set_edge_fade(edge_fade_px(scaler_.dst_h()));
-    log_info("render: HUD map edges fade over %u px (%u%%)", scaler_.edge_fade(), pct);
+    shape_.fade = edge_fade_px(shape_.dh);   /* the worker makes the next frame with it */
+    log_info("render: HUD map edges fade over %u px (%u%%)", shape_.fade, pct);
+}
+
+bool MapFeed::wanted_visible() const
+{
+    return live_ && !frozen_ && picture_ == Picture::Shown && !paused_;
+}
+
+void MapFeed::set_paused(bool paused)
+{
+    if (paused == paused_)
+        return;
+    paused_ = paused;
+    log_info("render: map %s on %s", paused ? "paused from the app: hidden, no frames sent" : "resumed from the app",
+             cfg_.target.c_str());
+    show_or_hide();
 }
 
 void MapFeed::set_hud_offset(int dx, int dy)
 {
     if (dx == cfg_.hud_offset_x && dy == cfg_.hud_offset_y)
         return;
-    cfg_.hud_offset_x = dx;
-    cfg_.hud_offset_y = dy;
+    cfg_.hud_offset_x = placed_x_ = dx;
+    cfg_.hud_offset_y = placed_y_ = dy;
     uint32_t tw, th;
     if (cfg_.target != "hud" || !layer_ || !target_size(client_.targets, "hud", &tw, &th))
         return;
@@ -194,7 +220,7 @@ void MapFeed::set_hud_offset(int dx, int dy)
     lo_.x = (int)q.x;
     lo_.y = (int)q.y;
     client_.set(layer_, lo_);
-    log_info("render: HUD map moved to %u,%u (offset %+d,%+d)", q.x, q.y, dx, dy);
+    log_info("render: HUD map moved to %u,%u (offset %+d,%+d)", q.x, q.y, placed_x_, placed_y_);
 }
 
 void MapFeed::set_hud_width(unsigned pct)
@@ -207,15 +233,10 @@ void MapFeed::set_hud_width(unsigned pct)
         return;
     /* the texture's size changes with it: a new layer at the new size */
     log_info("render: HUD map %u%% wide", pct);
+    keep_newest();
     client_.drop(layer_);
     layer_ = 0;
     make_layer();
-}
-
-bool MapFeed::knows(const std::string &name) const
-{
-    uint32_t w, h;
-    return !client_.connected() || target_size(client_.targets, name == "sail" ? "map" : name, &w, &h);
 }
 
 bool MapFeed::set_target(const std::string &name)
@@ -226,8 +247,10 @@ bool MapFeed::set_target(const std::string &name)
         return false;
     if (t == cfg_.target && layer_)
         return true;
-    if (layer_)
+    if (layer_) {
+        keep_newest();
         client_.drop(layer_);
+    }
     layer_ = 0;
     cfg_.target = t;
     if (client_.connected())
@@ -262,6 +285,7 @@ void MapFeed::poll(int64_t now_ms)
     if (client_.connected() && down_long_) {
         down_long_ = false;
     }
+    show_when_sent();
     count_second(now_ms);
 }
 
@@ -275,37 +299,123 @@ void MapFeed::count_second(int64_t now_ms)
     second_ms_ = now_ms;
 }
 
+bool MapFeed::sending() const
+{
+    return layer_ && client_.connected() && (lo_.visible || show_due_);
+}
+
+/* Counted as the frames the client would send, whether or not they go. */
 void MapFeed::offer(std::vector<uint8_t> *atlas, uint64_t id, int64_t now_ms)
 {
-    if (paused_) {   /* the app's Pause map: nothing goes to the renderer */
-        count_second(now_ms);
-        return;
-    }
-    if (scaling_ && layer_) {
-        /* kept without a copy: the buffer handed back is the last pending
-         * one, the same size (a copy only for the first) */
-        if (pending_.size() == atlas->size())
-            pending_.swap(*atlas);
-        else
-            pending_ = *atlas;
-        pending_ready_ = true;
-        pending_id_ = id;
-        send_pending(now_ms);
-    } else if (layer_ && client_.frame(layer_, atlas, id)) {
+    if (layer_ && client_.connected())
         frames_++;
+    if (scaling_ || !sending() || !client_.frame(layer_, atlas, id)) {
+        hold(atlas, id);
+    } else {
+        id_ = id;
+        held_new_ = elsewhere_ = in_worker_ = false;
     }
+    send_pending(now_ms);
     count_second(now_ms);
+}
+
+void MapFeed::repeat(uint64_t id, int64_t now_ms)
+{
+    id_ = id;
+    if (layer_ && client_.connected())
+        frames_++;
+    if (sending())
+        send_newest();
+    count_second(now_ms);
+}
+
+void MapFeed::send_newest()
+{
+    if (!held_new_)
+        client_.repeat(layer_, id_);
+    else if (!scaling_ && !elsewhere_)
+        held_new_ = !client_.frame(layer_, &held_, id_);
 }
 
 void MapFeed::send_pending(int64_t now_ms)
 {
-    if (!pending_ready_ || !layer_ || now_ms < next_send_ms_)
+    uint64_t sid = 0;
+    if (worker_.take(&scaled_, &sid, shape_, in_worker_ ? &held_ : nullptr)) {
+        in_worker_ = false;
+        if (!scaled_.empty() && layer_)
+            client_.frame(layer_, &scaled_, sid);
+    }
+    if (!scaling_ || !held_new_ || elsewhere_ || in_worker_ || !sending() || now_ms < next_send_ms_ ||
+        !worker_.idle())
         return;
-    scaler_.scale(pending_.data(), &scaled_);
-    pending_ready_ = false;
-    if (client_.frame(layer_, &scaled_, pending_id_))
-        frames_++;
-    next_send_ms_ = now_ms + (cfg_.video.fps ? 1000 / (int64_t)cfg_.video.fps : 0);
+    if (worker_.submit(&held_, id_, shape_)) {
+        held_new_ = false;
+        in_worker_ = true;
+        next_send_ms_ = now_ms + (cfg_.video.fps ? 1000 / (int64_t)cfg_.video.fps : 0);
+    }
+}
+
+void MapFeed::hold(std::vector<uint8_t> *atlas, uint64_t id)
+{
+    id_ = id;
+    held_.swap(*atlas);
+    held_new_ = true;
+    elsewhere_ = in_worker_ = false;
+}
+
+void MapFeed::changed(uint64_t id)
+{
+    id_ = id;
+    held_new_ = elsewhere_ = true;
+    in_worker_ = false;
+}
+
+bool MapFeed::wants_picture(int64_t now_ms) const
+{
+    return elsewhere_ && held_new_ && sending() && now_ms >= next_send_ms_ && worker_.idle();
+}
+
+bool MapFeed::latest(std::vector<uint8_t> *out) const
+{
+    if (elsewhere_ || in_worker_)
+        return false;
+    if (scaling_ ? held_.empty() : !held_new_)
+        return layer_ && !scaling_ && client_.latest(layer_, out);
+    *out = held_;
+    return true;
+}
+
+bool MapFeed::disabled() const
+{
+    auto d = client_.disabled.find(cfg_.target);
+    return client_.connected() && d != client_.disabled.end() && d->second;
+}
+
+int64_t MapFeed::wake_in_ms(int64_t now_ms) const
+{
+    if (!scaling_ || !layer_)
+        return -1;
+    if (!worker_.idle())
+        return kScaleWaitMs;
+    return held_new_ && sending() && !disabled() ? std::max<int64_t>(1, next_send_ms_ - now_ms) : -1;
+}
+
+void MapFeed::keep_newest()
+{
+    if (scaling_)
+        held_new_ = true;
+    else if (!held_new_)
+        held_new_ = client_.latest(layer_, &held_);
+}
+
+void MapFeed::show_when_sent()
+{
+    if (!show_due_ || !layer_ || client_.frame_waiting(layer_) || (held_new_ && (scaling_ || elsewhere_)) ||
+        in_worker_)
+        return;
+    show_due_ = false;
+    lo_.visible = true;
+    client_.set(layer_, lo_);
 }
 
 void MapFeed::set_stream(bool live, bool frozen, Picture picture)
@@ -326,30 +436,20 @@ void MapFeed::set_stream(bool live, bool frozen, Picture picture)
     show_or_hide();
 }
 
-/* Shown while the stream is live, not frozen, shows a picture and the app has not paused it. */
-bool MapFeed::visible() const
-{
-    return live_ && !frozen_ && picture_ == Picture::Shown && !paused_;
-}
-
 void MapFeed::show_or_hide()
 {
-    const bool v = visible();
-    if (layer_ && lo_.visible != v) {
-        lo_.visible = v;
+    const bool visible = wanted_visible();
+    if (!layer_ || (lo_.visible || show_due_) == visible)
+        return;
+    show_due_ = visible;
+    if (visible) {
+        if (client_.connected())
+            send_newest();
+        show_when_sent();
+    } else if (lo_.visible) {
+        lo_.visible = false;
         client_.set(layer_, lo_);
     }
-}
-
-void MapFeed::set_paused(bool paused)
-{
-    if (paused == paused_)
-        return;
-    paused_ = paused;
-    pending_ready_ = false;   /* a frame held for the HUD's scaler is not sent late */
-    log_info("render: map %s on %s", paused ? "paused from the app: hidden, no frames sent" : "resumed from the app",
-             cfg_.target.c_str());
-    show_or_hide();
 }
 
 void MapFeed::request_report()
@@ -384,8 +484,8 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     FeedStatus s;
     s.target = cfg_.target;
     s.hud_width_pct = cfg_.hud_width_pct;
-    s.hud_offset_x = cfg_.hud_offset_x;
-    s.hud_offset_y = cfg_.hud_offset_y;
+    s.hud_offset_x = placed_x_;
+    s.hud_offset_y = placed_y_;
     s.hud_edge_fade_pct = cfg_.hud_edge_fade_pct;
     s.paused = paused_;
     s.upload_cap_kb = cap_kb_;
@@ -393,6 +493,7 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
     s.guide_hold = cfg_.guide_hold;
     auto g = client_.guide_disabled.find(cfg_.target);
     s.guide_disabled = client_.connected() && g != client_.guide_disabled.end() && g->second;
+    s.disabled = disabled();
     char cap[96] = "";
     if (cap_kb_ && cap_kb_ < max_kb_)
         std::snprintf(cap, sizeof cap, ", upload cap %u KB/s", cap_kb_);
@@ -434,8 +535,6 @@ FeedStatus MapFeed::status(const std::string &decode, const std::string &stream)
         s.page = decode;
         if (layer_state_ == "suspended")
             s.reason = "under an alert on the cluster";
-        else if (target_reason_.find("pop-up") != std::string::npos)
-            s.reason = "a HUD pop-up is open; the map returns when it closes";
         else if (holder_ == "stock")
             s.reason = "the stock map holds the slot";
         else if (holder_ == "foreign")

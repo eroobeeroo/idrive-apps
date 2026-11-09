@@ -59,6 +59,10 @@ public:
     /* A frame's atlas, frame_bytes() long; its levels are rounded on the
      * way in. Replaces a frame not yet written. */
     void offer(const uint8_t *atlas, int64_t now_ms);
+    /* A frame that is the last one offered again, byte for byte: staged,
+     * counted and kept live as that frame would be, with nothing to copy and
+     * no plan to make unless tiles are due to settle. */
+    void repeat(int64_t now_ms);
 
     bool ready(int64_t now_ms) const override;
     bool attach(Graph *g, int64_t now_ms, std::string *err) override;
@@ -93,6 +97,7 @@ private:
         bool fresh = false, whole = false, refine = false, was_shown = false, was_parked = false;
         int next_bank = 0;
         size_t raw = 0, accepted = 0;
+        int64_t offered_ms = 0;   /* when its frame was offered */
         std::vector<crk::PixelRect> rects;
     };
 
@@ -115,6 +120,9 @@ private:
      * outlives the scene so the next one starts from it. */
     std::vector<uint8_t> front_, shown_, rect_scratch_;
     bool front_pending_ = false;
+    /* repeated_: front_ waits as a repeat of the picture last staged.
+     * front_stale_: a whole write swapped the newest frame into shown_. */
+    bool repeated_ = false, front_stale_ = false;
     int64_t front_ms_ = -1, shown_ms_ = -1, last_frame_ms_ = -1;
     bool have_ = false;
 
@@ -129,6 +137,7 @@ private:
     int64_t refine_due_ms_ = -1;
     Staged staged_;
 
+    uint64_t age_ms_ = 0;   /* the sent frames' ages at their flush, summed */
     uint64_t sent_ = 0, same_ = 0, quiet_ = 0, superseded_ = 0, settled_ = 0, failed_ = 0, refused_ = 0,
              bytes_ = 0, whole_writes_ = 0, partial_writes_ = 0, rects_ = 0, packed_writes_ = 0, refines_ = 0,
              held_budget_ = 0;

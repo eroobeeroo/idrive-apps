@@ -118,33 +118,6 @@ int main()
     }
 
     {
-        /* edge fade: a white frame fades to black at its edges along a
-         * smooth ramp, its middle untouched, the corners darkest */
-        AtlasScaler ef;
-        ef.configure(1088, 480, 452, 200, 0);
-        ef.set_edge_fade(30);
-        ok("edge fade: set in output pixels", ef.edge_fade() == 30);
-        std::vector<uint8_t> white(1088 * 720, 235);
-        for (size_t i = 1088 * 480; i < white.size(); i++) white[i] = 200;
-        ef.scale(white.data(), &out);
-        const uint8_t *y = out.data(), *u = y + 452 * 200;
-        const size_t mid = 100 * 452;
-        ok("edge fade: the edges' outermost pixels nearly black", y[mid] < 20 && y[mid + 451] < 20 && y[226] < 20 && y[199 * 452 + 226] < 20);
-        ok("edge fade: the inside untouched", y[mid + 226] == 235 && y[mid + 30] == 235 && y[30 * 452 + 226] == 235);
-        bool rising = true;
-        for (uint32_t x = 1; x < 30; x++) rising = rising && y[mid + x] >= y[mid + x - 1];
-        ok("edge fade: rises smoothly from the edge in", rising && y[mid + 15] > 100 && y[mid + 15] < 160);
-        ok("edge fade: symmetric left and right", y[mid + 10] == y[mid + 451 - 10]);
-        ok("edge fade: a corner darker than an edge's middle at the same depth", y[10 * 452 + 10] < y[mid + 10]);
-        ok("edge fade: the chroma edge goes neutral", u[50 * 452] >= 126 && u[50 * 452] <= 130 && u[50 * 452 + 113] == 200);
-        ef.set_edge_fade(500);
-        ok("edge fade: held to half the map's height", ef.edge_fade() == 100);
-        ef.set_edge_fade(0);
-        ef.scale(white.data(), &out);
-        ok("edge fade 0: off again", out[mid] == 235);
-    }
-
-    {
         /* black background: a night map (navy field Y 60, a road Y 120, a
          * label Y 220): the field goes black with neutral chroma, the road
          * and label stay; a day map (field Y 200) is left alone */
@@ -197,6 +170,33 @@ int main()
         kd.set_black_background(true);
         kd.scale(day.data(), &out);
         ok("black background: a day map left alone", out[20 * 452 + 20] == 200);
+    }
+
+    {
+        /* edge fade: a white frame fades to black at its edges along a
+         * smooth ramp, its middle untouched, the corners darkest */
+        AtlasScaler ef;
+        ef.configure(1088, 480, 452, 200, 0);
+        ef.set_edge_fade(30);
+        ok("edge fade: set in output pixels", ef.edge_fade() == 30);
+        std::vector<uint8_t> white(1088 * 720, 235);
+        for (size_t i = 1088 * 480; i < white.size(); i++) white[i] = 200;
+        ef.scale(white.data(), &out);
+        const uint8_t *y = out.data(), *u = y + 452 * 200;
+        const size_t mid = 100 * 452;
+        ok("edge fade: the edges' outermost pixels nearly black", y[mid] < 20 && y[mid + 451] < 20 && y[226] < 20 && y[199 * 452 + 226] < 20);
+        ok("edge fade: the inside untouched", y[mid + 226] == 235 && y[mid + 30] == 235 && y[30 * 452 + 226] == 235);
+        bool rising = true;
+        for (uint32_t x = 1; x < 30; x++) rising = rising && y[mid + x] >= y[mid + x - 1];
+        ok("edge fade: rises smoothly from the edge in", rising && y[mid + 15] > 100 && y[mid + 15] < 160);
+        ok("edge fade: symmetric left and right", y[mid + 10] == y[mid + 451 - 10]);
+        ok("edge fade: a corner darker than an edge's middle at the same depth", y[10 * 452 + 10] < y[mid + 10]);
+        ok("edge fade: the chroma edge goes neutral", u[50 * 452] >= 126 && u[50 * 452] <= 130 && u[50 * 452 + 113] == 200);
+        ef.set_edge_fade(500);
+        ok("edge fade: held to half the map's height", ef.edge_fade() == 100);
+        ef.set_edge_fade(0);
+        ef.scale(white.data(), &out);
+        ok("edge fade 0: off again", out[mid] == 235);
     }
 
     const struct { uint32_t w, h; } sizes[] = {{452, 200}, {560, 244}, {680, 300}, {800, 352}, {320, 140}};

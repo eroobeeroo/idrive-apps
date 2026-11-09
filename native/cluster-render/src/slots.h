@@ -82,7 +82,13 @@
  *   and flushes nothing. The scene goes only when another target needs its
  *   scene id: two targets with one scene id cannot both be requested (the
  *   second waits until the first is released), and the second's request
- *   takes the first's scene down before it publishes its own.
+ *   takes the first's scene down before it publishes its own. A scene the
+ *   scenes report stale (a scene file came or went) is unpublished: a
+ *   requested target that is wanted is released first and asked for again,
+ *   one not wanted keeps it until its release (the linger). A requested
+ *   target whose scene is outdated (its file replaced) keeps its slot: its
+ *   scene is unpublished and published again at once, and the renderer's
+ *   subscription is awaited as after a showing (rendering, below).
  * - The display service going away takes every target down; when it comes
  *   back, the targets still wanted are requested again after kSettleMs. The
  *   scenes stay published: RAMSES publication does not go through Dcsm2,
@@ -130,6 +136,9 @@ namespace crs {
 struct TargetSpec {
     std::string name;
     uint64_t slot = 0;
+    /* Clients may have the service load a scene file as its scene
+     * (PROTOCOL.md "Scene files"); <target>_scene_files. */
+    bool scene_files = false;
     uint32_t content_class = 0;
     uint64_t content = 0;   /* iDrive 8 */
     uint64_t scene_id = 0;
@@ -152,7 +161,6 @@ struct TargetSpec {
     /* The mapping guard's strikes that disable this mapping; 0: never
      * disabled, the strikes only logged (guard.h). Holds: 2. */
     int strike_limit = 0;
-
     /* The stock HMI's pop-up slots the target gives way to (the HUD's media
      * and list pop-ups, 0x322): while one of them shows content, the target
      * is released and not asked for, so the pop-up keeps its place (asking
@@ -160,6 +168,9 @@ struct TargetSpec {
      * the target is asked for again. */
     std::vector<uint64_t> yield_slots;
     int yield_ms = 1500;
+    /* Its layers write from the HUD's share of the upload budget, and its
+     * evidence never moves the upload cap (compositor.h). The HUD's. */
+    bool share = false;
 };
 
 class Guard;
@@ -224,6 +235,14 @@ public:
     /* The display took t's published scene again (parked or shown): the
      * renderer that subscribed to it at the fetch got it whole. */
     virtual void resent(const TargetSpec &, int64_t) {}
+    /* t's published scene is not the one its content needs any more (a
+     * scene file came or went, compositor.h): the slot manager takes it
+     * down and publishes it again, at once while the target is wanted or
+     * not requested, else once it is released. */
+    virtual bool stale(const TargetSpec &) const { return false; }
+    /* t's published scene is of a file since replaced: published again in
+     * place, the target not released (republish()). */
+    virtual bool outdated(const TargetSpec &) const { return false; }
 };
 
 enum class TargetState { Idle, Acquiring, Parked, Shown, Lingering, Waiting, Unavailable };
@@ -332,6 +351,8 @@ public:
     /* A hold following the target is disabled by the guard, or by its
      * slot's refusal. */
     bool hold_disabled(int target) const;
+    /* The target's own mapping is disabled (the HUD's, by the guard). */
+    bool disabled(int target) const { return t_[target].disabled; }
     void on_shown(uint64_t scene_id, int64_t now_ms);
     /* Mapped, but parked invisible behind the content the slot shows. */
     void on_parked(uint64_t scene_id, int64_t now_ms);
@@ -450,6 +471,9 @@ private:
     void acquire(int i, int64_t now_ms);
     void take_down(int i, int64_t now_ms);
     void drop_scene(int i);
+    /* A requested target's scene unpublished and published again, the
+     * target kept requested; refused, it waits on the ladder. */
+    void republish(int i, int64_t now_ms);
     /* The last release of the target's scene id is confirmed by the display
      * and its renderer has unsubscribed, or neither is awaited any longer. */
     bool settled(int i, int64_t now_ms) const;
@@ -485,6 +509,9 @@ private:
     /* A pop-up shows in one of the target's yield slots, or went less than
      * its yield_ms ago. */
     bool popup_blocks(int i, int64_t now_ms);
+    /* A shown scene the display removed: evidence for the governor, a
+     * share target's only logged. */
+    void removal_evidence(int i, const std::string &why, int64_t ms);
     void park(int i, int64_t now_ms);
     void charge_resend(int i, int64_t now_ms);
     void take_over(int i, int64_t now_ms);

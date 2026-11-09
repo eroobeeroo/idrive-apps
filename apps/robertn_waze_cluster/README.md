@@ -8,7 +8,7 @@ shell is needed.
 Install it from the catalog of
 [idrive-apps](https://github.com/robertnisipeanu/idrive-apps)
 through the [mgu Store](https://github.com/robertnisipeanu/mgu-store). It requires
-waze-on-cluster 0.8.5, which brings the cluster renderer and writes the
+waze-on-cluster 0.9.3, which brings the cluster renderer and writes the
 CarPlay patch, and the Android Auto patch where the car supports it, as it
 installs; one head-unit start activates them. After that
 the map is on the cluster whenever CarPlay streams it, whether or not this
@@ -59,19 +59,52 @@ the RHMI text files, which hold the tile's name and the Logs page's title.
 `node tools/test_i18n.js` checks that every language has every word with
 the same `{n}`, and every HMI language its text file.
 
+## Where the map shows
+
+**Show on** in General chooses: **Cluster** (the default), **HUD
+(experimental)** or **Cluster and HUD (experimental)**; Remove patch turns
+the map off. HUD support was contributed by [eroobeeroo](https://github.com/eroobeeroo), and
+the choice of both or one follows [wesleyredhat](https://github.com/wesleyredhat)'s.
+With both, the HUD gets up to half the upload bandwidth, only what it uses;
+alone, all of it. On the HUD the frames are scaled on the head unit to the
+size shown, the corners are rounded and a night map's background is made
+black, which the HUD shows as nothing, so the roads, route and labels float
+in view. The map steps aside while the HUD's media and list pop-ups show.
+With the map on the HUD only, the cluster shows BMW's own content. If the
+instrument cluster restarts right after the HUD map shows, twice, the HUD
+map is disabled; the cluster's map keeps working.
+
+## Driver profiles
+
+Show on, the HUD map's size and its position are shared by every driver
+profile. **Own settings for this driver**, under Show on, gives the driver
+profile in use its own copy of them, which it then changes on its own; the
+head unit switches to them whenever it switches to that profile. Unticked,
+the profile goes back to the shared settings. The idea and the way the app
+reads the profile come from [eroobeeroo](https://github.com/eroobeeroo)'s
+#41. The app reads the profile in use from the head unit
+(`SessionManager.currentUserAccountReference`) every 5 s and goes by a
+profile once two reads agree; a read with no profile changes nothing. Until
+then the checkbox is greyed; on a head unit without that field the shared
+settings apply.
+
 ## The page
 
-One `LT_State_Wide` list in three sections, each under a header row
-(`LT_Label_Header_1Row`). CarPlay and Android Auto have the same rows with
+One `LT_State_Wide` list in four sections, each under a header row
+(`LT_Label_Header_1Row`, which the controller passes over): General, HUD,
+CarPlay, Android Auto; then Restart head unit and the Restart row. CarPlay and Android Auto have the same rows with
 the same words; no row repeats the header's name. Every info row reads
 `Name: Value`, the value starting with a capital (`Zoom: —` while there
-is none), and every on/off setting is a `Hide …` checkbox. Every row
-stays where it is: one that cannot act now is greyed, and while `patchd`
+is none), every on/off setting is a checkbox, the choice of where the map
+shows a drop-down (`LT_DropDownMenu_1Row_2Col3070`, as the stock apps'
+settings) and the HUD map's size a slider (`LT_Slider_LeftJustified_Fill_Steps`,
+as the stock seat heating's level). Every row
+stays on the page: one that cannot act now is greyed, and while `patchd`
 runs any operation (`busy`), every operation in both sections is. A greyed
-row pressed sends nothing; a greyed checkbox keeps its label. The
-restart's two rows, the last ones, are the only rows shown and hidden, so
-nothing else moves when they come or go. `(after restart)` marks a value
-that waits for the next head-unit start.
+row pressed sends nothing; a greyed checkbox keeps its label. Four rows
+are shown and hidden: CarPlay Wi-Fi and the line under it, CarPlay's last,
+and the restart's two, the page's last, so no row above them moves.
+`(after restart)` marks a value that waits for the next head-unit start.
 
 Both sections' Status row uses the same words: `Patched`, `Not patched`,
 `Patching…`, `Removing patch…`, `Patched after restart`, `Removed after
@@ -87,36 +120,45 @@ supported, HIGH F included.
 
 | Section | Row | What it does |
 |---|---|---|
+| **General** | Show on | a drop-down: `Cluster` (the default), `HUD (experimental)` or `Cluster and HUD (experimental)`; with the HUD alone the cluster shows BMW's own content. A choice takes effect at once and is kept for the next start. Greyed until the map service reports it; `—` while it shows the map on neither (its own configuration) |
+| | Own settings for this driver | a checkbox: ticked, the driver profile in use has its own Show on, HUD size and position, a copy of the settings when ticked; unticked (the default), it uses the shared ones. Greyed while no driver profile is detected and until the map service answers |
+| | Cluster map | `Cluster map: <state>`, the map the shared render draws for either phone: `Off` unless CarPlay's or Android Auto's patch is in effect (on disk with nothing pending, as the last status outside a change said; a running or failed change keeps it), `Starting…`, `Showing Waze map — 16 frames/s`, `Waiting for the phone`, `Waiting for the phone's map`, `Stream lost`, `Frozen`, `Error`, `Unavailable` (the map service is down, or refuses the head unit) |
+| | Hide BMW's turn box | a checkbox: ticked, BMW's turn-by-turn box on the cluster stays hidden while the map shows (the default); unticked, it shows. A press changes it at once and the map service keeps it. Greyed and unticked until the map service reports it and while the cluster renderer keeps the box shown; greyed while the map is not on the cluster |
+| | Logs | opens the Logs page |
+| **HUD** | HUD map | `HUD map: <state>`, the map on the HUD: `Off`, `Starting…`, `Showing`, `Waiting for the phone`, `Frozen`, `Error`, `Disabled after errors` (the cluster renderer turned it off after the cluster restarted right after it showed, twice), `Unavailable` (the map service is down) |
+| | Size | a slider, `Size: Standard` (the fitted box, about 57 % of the HUD's width, at the 55 % step) or `Size: 70 %`: 5 % a step, from 30 % to 85 % of the HUD's width, the picture's shape kept; kept for the next start; greyed while the HUD is off or disabled |
+| | Position | `Position: Centre`, or how far the HUD map is moved: `Position: 20 px right, 10 px up` |
+| | Move left / Move right / Move up / Move down | 10 px a press, held inside the HUD; kept for the next start; greyed as the Size slider |
+| | Centre | puts it back in the middle; enabled while it is moved |
 | **CarPlay** | Status | `Status: <state>`, in the words above |
 | | Patch | applies the patch; enabled while it is off, unknown or out of date, the head unit is supported and no change is pending |
-| | Remove patch | reverts the patch, which turns the map off; enabled while patched and no change is pending |
+| | Remove patch | reverts the patch, which turns the map off; enabled while something of the patch is on disk, also while it waits for a restart (`Patched after restart`), and no change runs; a patch waiting over the original is removed at once (`Not patched`), one waiting over a running patch leaves a removal that waits (`Removed after restart`) |
+| | CarPlay Wi-Fi | `CarPlay Wi-Fi: 5 GHz` or `CarPlay Wi-Fi: 2.4 GHz`, the band of the head unit's Wi-Fi the phone joined; shown while CarPlay runs over Wi-Fi and the band is known (waze-on-cluster README, "CarPlay's Wi-Fi band") |
+| | (the line under it) | `Audio may cut out. On your iPhone, turn Wi-Fi off and on.`; shown on 2.4 GHz only, where CarPlay's streams and the cluster's can be more than the link carries |
 | **Android Auto** | Status | `Status: <state>`, in the words above; `Failed` also while the last zoom or turn-card change failed |
-| | Patch | applies its patch; enabled while it is off or partly patched, supported and nothing is pending |
-| | Remove patch | reverts it; enabled while patched and nothing is pending |
+| | Patch | applies its patch, also to an `Untested version`; enabled while it is off or partly patched, supported and nothing is pending |
+| | Remove patch | reverts it; enabled as CarPlay's |
 | | Zoom | `Zoom: 180 dpi`, the density on disk, with `(after restart)` while it differs from the one aapd runs until the next head-unit start; `Zoom: —` without the patch |
-| | Zoom out / Zoom in | 10 dpi a press (150-400): out shows more map; enabled while patched, nothing is pending and the 10 s between changes has passed |
+| | Zoom out / Zoom in | 10 dpi a press (150-400): out shows more map; enabled while patched, nothing is pending, no conflict stands but `Untested version`, and the 10 s between changes has passed |
 | | Hide phone's turn card | a checkbox, ticked while the turn card on disk is hidden, or as asked while its change runs: the phone's own turn card cropped off the map; `(after restart)` as for the zoom; enabled as Zoom out and Zoom in |
-| **Map display** (this fork; its rows are in English) | Pause map | a checkbox: ticked, the map is hidden on the cluster or the HUD and no frames are sent to the renderer; unticked, it shows again. Kept across restarts; the Cluster map row reads `Cluster map: Paused` |
-| | Show map on | `Show map on: Cluster` / `HUD`: a press moves the map between the instrument cluster and the head-up display, at once, saved for the next start |
-| | HUD map larger / smaller | the HUD map's width in 5 % steps, 30-85 % of the HUD (the row shows the size now); enabled while the map is on the HUD |
-| | Move HUD map left / right / up / down | 10 px a press, held inside the HUD |
-| | Centre HUD map | puts it back in the middle (the row shows how far it is moved) |
-| | HUD edge fade | `Off`, `Soft`, `Medium`, `Strong`: the map's edges fade to see-through so it melts into the HUD |
-| **General** | Cluster map | `Cluster map: <state>`, the map the shared render draws for either phone: `Off` unless CarPlay's or Android Auto's patch is in effect (on disk with nothing pending, as the last status outside a change said; a running or failed change keeps it), `Starting…`, `Showing Waze map — 16 frames/s`, `Waiting for the phone`, `Waiting for the phone's map`, `Stream lost`, `Frozen`, `Error`, `Unavailable` (the map service is down, or refuses the head unit) |
-| | Hide BMW's turn box | a checkbox: ticked, BMW's turn-by-turn box on the cluster stays hidden while the map shows (the default); unticked, it shows. A press changes it at once and the map service keeps it. Greyed and unticked until the map service reports it and while the cluster renderer keeps the box shown |
-| | Logs | opens the Logs page |
-| | Restart head unit | the Node State Manager's normal head-unit restart; shown while a written change, CarPlay's or Android Auto's, waits for the next head-unit start; enabled while nothing runs and the restart limit (one every 10 minutes) allows it |
+| (the page's end) | Restart head unit | the Node State Manager's normal head-unit restart; shown while a written change, CarPlay's or Android Auto's, waits for the next head-unit start; enabled while nothing runs and the restart limit (one every 10 minutes) allows it |
 | | Restart | shown while it has something to say: `Restart: In progress`, `Restart: Failed, not accepted` (NSM did not take it), `Restart: Failed, the head unit stayed on`, `Restart: Failed, command failed`, each with `— possible in 8 min` while the limit holds, `Restart: Possible in 8 min` |
 
 | | |
 |---|---|
+| The top of the page: General | ![](docs/main-general.png) |
+| Show on: Cluster (the default) | ![](docs/main-show-on-cluster.png) |
+| Own settings for this driver, ticked | ![](docs/main-profile-own.png) |
+| Show on, open | ![](docs/main-show-on-open.png) |
+| Show on: HUD (experimental) | ![](docs/main-show-on-hud.png) |
+| Show on: Cluster and HUD (experimental) | ![](docs/main-show-on-both.png) |
+| The HUD map's size, the slider turned | ![](docs/main-hud-size.png) |
+| HUD disabled after errors | ![](docs/main-hud-disabled.png) |
 | CarPlay | ![](docs/main-carplay.png) |
 | Android Auto | ![](docs/main-aa-on.png) |
-| General | ![](docs/main-general.png) |
 | Android Auto alone patched, the cluster map showing | ![](docs/main-aa-only.png) ![](docs/main-aa-only-map.png) |
 | Android Auto not supported | ![](docs/main-aa-unsupported.png) |
 | A change waiting for a restart | ![](docs/main-restart-pending-aa.png) ![](docs/main-restart-pending.png) |
-| A restart that failed | ![](docs/main-restart-failed.png) |
 | The Logs page | ![](docs/logs-page.png) |
 
 The **Logs** page (`ST_OnlineApps_WazeClusterLogs`, a child of the main
@@ -162,9 +204,10 @@ when it closes them.
   `{"cmd":"apply","panel":"high","mode":"avb"}`, `{"cmd":"revert"}`,
   `{"cmd":"aa-apply"}`, `{"cmd":"aa-revert"}`, `{"cmd":"aa-density","value"}`, `{"cmd":"aa-card","value"}`,
   `{"cmd":"reboot"}`, `{"cmd":"capture-start"|"capture-stop"}`. The daemon sends
-  `{"ev":"status","state","panel","mode","res","safe","carplay","reason","pending","conflict","busy","restart","aa"}`
+  `{"ev":"status","state","panel","mode","res","safe","carplay","reason","pending","conflict","busy","restart","aa","wifi"}`
   (`aa`: `{"state","reason","conflict","pending","aapd","dpi","diskCard","runDpi","runCard","density","card","densities","changeAt","error"}`;
-  `restart`: `{"state","code","reason","possibleAt"}`)
+  `restart`: `{"state","code","reason","possibleAt"}`; `wifi`: `{"band","iface","freq"}`, `band` `"5"` or
+  `"2.4"`, while CarPlay runs over Wi-Fi and its band is known, else `null`)
   (`state` original, patched, unknown, busy or error; `carplay: "deferred"`
   while a change waits for the next start), `{"ev":"capture",…}`,
   `{"ev":"reboot-reply","ok","reason"}`, `{"ev":"refused","cmd","reason"}`
@@ -185,9 +228,10 @@ A patch with another sink, panel, size (not `1088x480`) or safe area (not
 ```sh
 node tools/test_control.js           # the socket client against fake sockets
 node tools/test_page.js              # the page against a fake SDK and HMI
+node tools/test_profiles.js          # the driver profiles against fake sockets and SessionManager
 node tools/test_i18n.js              # every language: its words, placeholders, RHMI text files
-node tools/build.js                  # robertn_waze_cluster@0.5.6.src.tgz
-node tools/build.js --sdk <donor>    # also robertn_waze_cluster@0.5.6.tgz
+node tools/build.js                  # robertn_waze_cluster@<version>.src.tgz
+node tools/build.js --sdk <donor>    # also robertn_waze_cluster@<version>.tgz
 ```
 
 The app ships as a source package (`mgu-app.json`; `"build": "unit"` in the
@@ -208,9 +252,10 @@ Enter starts or stops a fake CarPlay stream.
 | `locales/<code>.json` | a language's words (Languages) |
 | `src/waze_cluster_control.js` | the render and patch socket clients and the status logic |
 | `src/logs_control.js` | the logs socket client |
+| `src/profile_sync.js` | the driver profile in use and its own map settings |
 | `src/qr.js`, `src/qrcodegen.js` | the QR code PNG; Project Nayuki's generator (MIT, `LICENSE-qrcodegen.txt`) |
 | `tools/` | build, fakes, tests, icon |
-| `robertn_waze_cluster@0.5.6/` | the package tree (manifest, RHMI UI, config) |
+| `package/` | the package tree (manifest, RHMI UI, config, CHANGELOG) |
 
 ## License
 

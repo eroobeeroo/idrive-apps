@@ -340,7 +340,7 @@ void Server::accept_client(int64_t)
         Client c;
         c.fd = fd;
         c.id = next_client_++;
-        clients_.push_back(c);
+        clients_.push_back(std::move(c));
     }
 }
 
@@ -360,23 +360,20 @@ void Server::read_client(Client &c, int64_t now_ms)
     /* At most a few messages' worth per pass, so one busy producer cannot
      * hold the render loop. */
     size_t budget = 4 << 20;
-    char buf[65536];
     for (;;) {
-        ssize_t r = read(c.fd, buf, sizeof buf);
+        ssize_t r = c.in.fill(c.fd);
         if (r == 0 || (r < 0 && errno != EAGAIN && errno != EINTR)) {
             c.closing = true;
             break;
         }
         if (r < 0)
             break;
-        c.in.append(buf, (size_t)r);
         for (;;) {
-            size_t used = 0, body_len = 0;
+            size_t body_len = 0;
             uint8_t type = 0;
             const char *body = nullptr;
             bool bad = false;
-            if (!cr::next_message(c.in.data() + c.in_off, c.in.size() - c.in_off, &used, &type, &body, &body_len,
-                                  &bad)) {
+            if (!c.in.next(&type, &body, &body_len, &bad)) {
                 if (bad) {
                     log_warn("client %llu: malformed message, disconnected", (unsigned long long)c.id);
                     c.closing = true;
@@ -389,14 +386,10 @@ void Server::read_client(Client &c, int64_t now_ms)
                 on_frame(c, body, body_len, now_ms);
             else if (type == cr::kMesh)
                 on_mesh(c, body, body_len, now_ms);
-            c.in_off += used;
             if (c.closing)
                 break;
         }
-        if (c.in_off) {
-            c.in.erase(0, c.in_off);
-            c.in_off = 0;
-        }
+        c.in.settle();
         if (c.closing || (size_t)r >= budget)
             break;
         budget -= (size_t)r;
@@ -435,6 +428,31 @@ void Server::error(Client &c, const std::string &op, uint32_t ref, const std::st
                              {"op", cr::json_quote(op)},
                              {"ref", std::to_string(ref)},
                              {"reason", cr::json_quote(why)}}));
+}
+
+void Server::error(Client &c, const std::string &op, uint32_t ref, const std::string &why, const std::string &line)
+{
+    send(c, cr::json_object({{"ev", cr::json_quote("error")},
+                             {"op", cr::json_quote(op)},
+                             {"ref", std::to_string(ref)},
+                             {"reason", cr::json_quote(why)},
+                             {"line", cr::json_quote(line)}}));
+}
+
+std::string Server::scene_reason(const Client &c, uint32_t layer) const
+{
+    const Layer *l = comp_->layer(c.id, layer);
+    const uint32_t scene = l ? comp_->scene_on(l->target()) : 0;
+    const uint64_t owner = comp_->owner_of(scene);
+    for (const Client &o : clients_) {
+        if (!scene || o.id != owner)
+            continue;
+        for (const auto &kv : o.refs)
+            if (&o == &c && kv.second == scene)
+                return "scene " + std::to_string(kv.first);
+        return "scene of " + (o.app.empty() ? std::string("?") : o.app);
+    }
+    return "scene";
 }
 
 bool Server::apply(Layer *l, const cr::Json &j, std::string *err)
@@ -580,7 +598,8 @@ void Server::on_json(Client &c, const std::string &body, int64_t now_ms)
         send(c, cr::json_object({{"ev", cr::json_quote("hello")},
                                  {"proto", std::to_string(cr::kProtocolVersion)},
                                  {"backend", cr::json_quote(backend_)},
-                                 {"targets", cr::json_quote(targets)}}));
+                                 {"targets", cr::json_quote(targets)},
+                                 {"repeat", "1"}}));
         c.target_sent.clear();
         log_info("client %llu: %s", (unsigned long long)c.id, c.app.c_str());
         return;
@@ -597,12 +616,39 @@ void Server::on_json(Client &c, const std::string &body, int64_t now_ms)
         op_asset(c, j);
         return;
     }
+    if (op == "scene") {
+        op_scene(c, j);
+        return;
+    }
     double ref_d = 0;
     std::string err;
     num(j, "ref", 0, 4294967295.0, &ref_d, &err);
     const uint32_t ref = (uint32_t)ref_d;
     auto it = c.refs.find(ref);
+    if (op == "edit") {
+        op_edit(c, ref, j);
+        return;
+    }
+    if (op == "drop" && it != c.refs.end() && comp_->edits(c.id, it->second)) {
+        comp_->remove(c.id, it->second);
+        log_info("client %llu (%s): scene %u dropped", (unsigned long long)c.id, c.app.c_str(), it->second);
+        c.refs.erase(it);
+        c.layer_sent.erase(ref);
+        return;
+    }
     Layer *l = it == c.refs.end() ? nullptr : comp_->layer(c.id, it->second);
+    if (op == "repeat") {
+        const bool video = l && std::string(l->kind()) == "video";
+        if (video)
+            static_cast<VideoLayer *>(l)->repeat(now_ms);
+        /* Answered at most once per ref, as frames are (on_frame). */
+        const std::string why = video ? "" : l ? "only a video layer repeats a frame" : "no such layer";
+        std::string &last = c.frame_error[l ? ref : 0];
+        if (!why.empty() && why != last)
+            error(c, op, ref, why);
+        last = why;
+        return;
+    }
     if (op == "drop") {
         auto a = c.assets.find(ref);
         if (a != c.assets.end()) {
@@ -678,6 +724,68 @@ void Server::op_asset(Client &c, const cr::Json &j)
     c.assets[ref] = id;
     log_info("client %llu (%s): asset %u on %s (%s %ux%u)", (unsigned long long)c.id, c.app.c_str(), id,
              slots_->targets()[target].name.c_str(), format ? "r8" : "rgba8", ap.w, ap.h);
+}
+
+void Server::op_scene(Client &c, const cr::Json &j)
+{
+    double ref_d = 0, contend = 0;
+    std::string err;
+    if (!num(j, "ref", 1, 4294967295.0, &ref_d, &err) || ref_d == 0) {
+        error(c, "scene", 0, err.empty() ? "ref missing" : err);
+        return;
+    }
+    const uint32_t ref = (uint32_t)ref_d;
+    /* Sent again with its ref: the file replaced in place, its edits gone. */
+    auto it = c.refs.find(ref);
+    const uint32_t again = it != c.refs.end() && comp_->edits(c.id, it->second) ? it->second : 0;
+    if ((it != c.refs.end() && !again) || c.assets.count(ref)) {
+        error(c, "scene", ref, "ref in use");
+        return;
+    }
+    const int target = slots_->index(str(j, "target"));
+    if (target < 0 || !slots_->targets()[target].follows.empty()) {
+        error(c, "scene", ref, "unknown target " + str(j, "target"));
+        return;
+    }
+    const TargetSpec &spec = slots_->targets()[target];
+    if (!spec.scene_files) {
+        error(c, "scene", ref, "target " + spec.name + " takes no scene files (" + spec.name + "_scene_files)");
+        return;
+    }
+    if (again && comp_->scene_target(again) != target) {
+        error(c, "scene", ref, "a scene's target is set when it is made");
+        return;
+    }
+    SceneSource src;
+    if (!num(j, "contend", 0, 1, &contend, &err) ||
+        !check_scene_source(scene_files_, str(j, "file"), str(j, "res"), str(j, "sha256"), &src, &err)) {
+        log_warn("client %llu (%s): scene file refused: %s", (unsigned long long)c.id, c.app.c_str(), err.c_str());
+        error(c, "scene", ref, err);
+        return;
+    }
+    const uint32_t id = again ? again : comp_->add_scene(c.id, target, src, contend != 0, &err);
+    if (!id) {
+        error(c, "scene", ref, err);
+        return;
+    }
+    if (again)
+        comp_->replace_scene(c.id, id, src, contend != 0);
+    c.refs[ref] = id;
+    c.layer_sent.erase(ref);   /* its state again, even unchanged: send the values again then */
+    log_info("client %llu (%s): scene %u %s%s", (unsigned long long)c.id, c.app.c_str(), id,
+             comp_->scene_text(id).c_str(), again ? " (replaced)" : "");
+}
+
+void Server::op_edit(Client &c, uint32_t ref, const cr::Json &j)
+{
+    auto it = c.refs.find(ref);
+    SceneEdits *e = it == c.refs.end() ? nullptr : comp_->edits(c.id, it->second);
+    if (!e) {
+        error(c, "edit", ref, "no such scene");
+        return;
+    }
+    for (const EditProblem &p : e->add(str(j, "lines")))
+        error(c, "edit", ref, p.reason, p.line);
 }
 
 void Server::op_on_layer(Client &c, const std::string &op, uint32_t ref, Layer *l, const cr::Json &j)
@@ -942,10 +1050,10 @@ void Server::report(int64_t now_ms)
             if (!slots_->targets()[t].follows.empty())
                 continue;   /* a hold: no client's target */
             const TargetStatus &s = slots_->status((int)t);
-            const bool hold_off = slots_->hold_disabled((int)t);
+            const bool hold_off = slots_->hold_disabled((int)t), off = slots_->disabled((int)t);
             const std::string line = std::string(target_state_name(s.state)) + "\n" + holder_name(s.holder) + "\n" +
                                      s.reason + "\n" + std::to_string(s.retry_ms) + "\n" +
-                                     rendering_name(s.rendering) + "\n" + (hold_off ? "1" : "0");
+                                     rendering_name(s.rendering) + "\n" + (hold_off ? "1" : "0") + (off ? "1" : "0");
             std::string &sent = c.target_sent[slots_->targets()[t].name];
             if (line == sent)
                 continue;
@@ -958,7 +1066,8 @@ void Server::report(int64_t now_ms)
                                      {"retry_in_ms", std::to_string(s.retry_ms >= 0 ? std::max<int64_t>(0, s.retry_ms - now_ms)
                                                                                    : -1)},
                                      {"rendering", cr::json_quote(rendering_name(s.rendering))},
-                                     {"guide_disabled", hold_off ? "1" : "0"}}));
+                                     {"guide_disabled", hold_off ? "1" : "0"},
+                                     {"disabled", off ? "1" : "0"}}));
         }
         const Governor &gov = comp_->governor();
         const std::string budget = std::to_string(gov.cap()) + "\n" + gov.reason();
@@ -971,8 +1080,13 @@ void Server::report(int64_t now_ms)
                                      {"reason", cr::json_quote(gov.reason())}}));
         }
         for (const auto &kv : c.refs) {
+            if (SceneEdits *e = comp_->edits(c.id, kv.second))
+                for (const EditProblem &p : e->take_problems())
+                    error(c, "edit", kv.first, p.reason, p.line);
             std::string reason;
             const LayerState s = comp_->state(kv.second, &reason);
+            if (reason == "scene")
+                reason = scene_reason(c, kv.second);
             const std::string line = state_line(s, reason);
             std::string &sent = c.layer_sent[kv.first];
             if (line == sent)
@@ -1027,6 +1141,14 @@ std::string Server::status_text(int64_t now_ms) const
         for (const auto &kv : c.refs) {
             std::string reason;
             const LayerState st = comp_->state(kv.second, &reason);
+            if (reason == "scene")
+                reason = scene_reason(c, kv.second);
+            const std::string scene = comp_->scene_text(kv.second);
+            if (!scene.empty()) {
+                s += "scene " + std::to_string(kv.second) + " of " + c.app + " " + scene + ": " +
+                     layer_state_name(st) + (reason.empty() ? "" : " - " + reason) + "\n";
+                continue;
+            }
             const Layer *l = nullptr;
             for (const Layer *x : comp_->layers())
                 if (x->id() == kv.second)

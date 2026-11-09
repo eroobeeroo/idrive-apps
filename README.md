@@ -11,6 +11,21 @@
 > or misuse of anything in this repository. **I do not recommend that anyone try this on their own vehicle**; if
 > you do, you do so entirely at your own risk.
 
+## This fork
+
+[eroobeeroo/idrive-apps](https://github.com/eroobeeroo/idrive-apps) is
+[robertnisipeanu/idrive-apps](https://github.com/robertnisipeanu/idrive-apps) as it is (the cluster renderer
+included, unchanged), with two additions to Waze on cluster and its app:
+
+- **HUD edge fade** (a button on the app's page: Off, Soft, Medium, Strong): the HUD map's edges feathered to
+  black, which the HUD shows as nothing, so the map melts away instead of ending in a hard rectangle.
+- **Pause map** (a checkbox): the map hidden on the cluster and the HUD and no frames sent until it is
+  unticked, kept across restarts.
+
+Both are saved per driver profile with the other map settings. Its versions sit above the original's
+(waze-on-cluster 0.9.105 on 0.9.5, the app 0.6.104 on 0.6.4), so the Store installs them from here where both
+repositories are sources; everything else comes from the original.
+
 Tools and apps for the iDrive 7 head unit (MGU) of a BMW, installed from the
 [mgu Store](https://github.com/robertnisipeanu/mgu-store).
 
@@ -22,45 +37,37 @@ Tools and apps for the iDrive 7 head unit (MGU) of a BMW, installed from the
 | [`release`](release) | builds and publishes the Store catalog |
 | `tools` | `oap_pack.js`, `oap_link.js`: pack the app |
 
-## This fork: the map on the HUD
+## The map on the HUD
 
-[eroobeeroo/idrive-apps](https://github.com/eroobeeroo/idrive-apps) adds the head-up display: the CarPlay map
-(Waze or Google Maps) shown on the HUD instead of the instrument cluster, switched from the app's page. Photos
-from a 2021 X5 xDrive45e (G05); street names blurred.
+The app's **Show on** chooses where the map shows: the instrument cluster (**Cluster**, the default), the head-up
+display (**HUD (experimental)**) or both (**Cluster and HUD (experimental)**). With both, the HUD gets up to half the
+upload bandwidth, only what it uses, so both stay smooth. HUD support was contributed by
+[eroobeeroo](https://github.com/eroobeeroo) and [wesleyredhat](https://github.com/wesleyredhat). Photos from a 2021 X5
+xDrive45e (G05); street names blurred.
 
 ![The HUD map while driving](docs/hud/hud-on-the-road.jpg)
 
 *The HUD map while driving: the route, the next streets and the speed readout over the road. (The panel at the
-bottom right, battery power and temperatures, is the separate [Cluster Info](https://github.com/eroobeeroo/idrive7-apps)
-app.)*
+bottom right, battery power and temperatures, is a separate app.)*
 
 | Before: Waze's grey-blue night field on the HUD | After: the background made black, which a HUD shows as nothing |
 |---|---|
 | ![Before](docs/hud/hud-before-black-background.jpg) | ![After](docs/hud/hud-night.jpg) |
 
-What it does:
+- **Size** - a slider in 5 % steps from 30 % to 85 % of the HUD's width, the picture's shape kept. Standard is the
+  fitted box, about 57 %.
+- **Position** - **Move left / right / up / down**, 10 px a press, and **Centre**. The map moves at once and is held
+  inside the HUD.
+- **Made for a HUD** - the frames are scaled on the head unit to the size shown, at most 10 a second, the corners are
+  rounded, and a night map's background is made black so only the roads, route and labels float in view (green,
+  such as parks, is kept).
+- **Gives way** - the map steps aside while the HUD's own media and list pop-ups show, and never replaces BMW's own
+  HUD content.
+- **Turned off after errors** - if the instrument cluster restarts right after the HUD map shows, twice, the HUD map
+  stays off (`HUD map: Disabled after errors`) until the next cluster-render version or `cluster-render guard-reset`;
+  the cluster's map keeps working.
 
-- **Pause map** - a checkbox that hides the map and stops sending it, on the cluster or the HUD, until unticked;
-  kept across restarts.
-- **Show map on: Cluster / HUD** - one button moves the map between the instrument cluster and the HUD, at once.
-- **Size** - **HUD map larger / smaller** in 5 % steps from 30 % to 85 % of the HUD's width (85 %: the widest it
-  shows whole), the picture's shape kept. Standard is the fitted box, about 57 %.
-- **Position** - **Move HUD map left / right / up / down**, 10 px a press, and **Centre HUD map**. The map moves
-  at once (only its place changes, nothing is re-sent) and is held inside the HUD.
-- **Made for a HUD** - the frames are scaled on the head unit to the size shown (sharper, 2-6x less data to the
-  instrument cluster), the corners are rounded, and a night map's background is made black so only the roads,
-  route and labels float in view (green, such as parks, is kept).
-- **Edge fade** - **HUD edge fade** steps Off / Soft / Medium / Strong: the map's edges fade to see-through so it
-  melts into the HUD instead of ending in a hard rectangle.
-- **Gives way** - the map steps aside while the HUD's own media and list pop-ups show, so they stay on the HUD.
-- **Per driver** - the display choice, size, position and edge fade are kept for each driver profile and follow the
-  driver when the profile changes.
-
-![HUD map size and position](docs/hud/hud-size-and-position.png)
-
-![The app page](docs/hud/app-page.png)
-
-On the cluster, as before, the map fills the central area:
+On the cluster the map fills the central area:
 
 ![The map on the cluster](docs/hud/cluster-map.jpg)
 
@@ -86,7 +93,8 @@ node release/release.js check                         # reproducible artifacts
 ```
 
 Each folder's README has the details; [`release/README.md`](release/README.md)
-covers versions, the catalog and publishing.
+covers versions, the catalog and publishing. Before opening a pull request,
+read [`CONTRIBUTING.md`](CONTRIBUTING.md): the release sets versions.
 
 ## License
 

@@ -1,32 +1,80 @@
 # Changelog
 
-## 0.5.102 (eroobeeroo fork)
+## Unreleased
 
-Pause map: a checkbox at the top of the fork's section, now named Map
-display. Ticked, the map is hidden on the cluster or the HUD (the stock
-content shows) and no frames are sent to the cluster renderer, whatever the
-phone streams; unticked, it shows again with the next frame. The choice is
-kept across head-unit restarts. While paused the Cluster map row reads
-`Cluster map: Paused`. Requires waze-on-cluster 0.8.102.
+## 0.6.104
 
-## 0.5.101 (eroobeeroo fork)
+- eroobeeroo's fork, on 0.6.4: a **Pause map** checkbox (the map hidden on the cluster and the HUD, no frames
+  sent, kept across restarts) and a **HUD edge fade** button (Off, Soft, Medium, Strong: the HUD map's edges
+  feathered to black, which the HUD shows as nothing), both kept per driver profile. Needs waze-on-cluster 0.9.105.
 
-Brought up to date with upstream 0.5.6: Android Auto, the page in sections,
-every display language, Hide BMW's turn box, HIGH F support and the faster
-boot recovery. Requires waze-on-cluster 0.8.101 (upstream 0.8.5 with the
-fork's HUD) and cluster-render 0.3.103.
+## 0.6.4
 
-The fork's head-up display controls are a Head-up display section before
-General: Show map on (Cluster or HUD), HUD map larger / smaller, Move HUD
-map left / right / up / down, Centre HUD map and HUD edge fade. They are
-enabled while the map is on the HUD and kept per driver profile, as before.
-The section's rows are in English; the rest of the page follows the display
-language.
+Map settings per driver profile, after eroobeeroo's #41. Show on, the HUD
+map's size and its position stay shared by every driver profile; Own
+settings for this driver, a checkbox under Show on, gives the profile in
+use its own copy, which the head unit switches to with the profile.
+Unticked, the profile uses the shared settings again. Greyed while no
+driver profile is detected.
 
-Earlier fork releases (0.4.101-0.4.114) added the HUD as a place for the
-map, its size, position and edge fade, the per-profile settings, the frames
-scaled on the head unit, rounded corners, the black night background and
-the pop-up yield; see the native README for each.
+## 0.6.3
+
+The same app, built by the release that sets its version. Nothing changes
+on the car.
+
+## 0.6.2
+
+The app's tile keeps its name in the Apps menu after the app manager stops
+the app: the tile shows the name and icon the app manager gives it.
+
+## 0.6.1
+
+Android Auto's Patch is offered on an `Untested version` too, and patches
+it; an install leaves such a version as it is. While Android Auto reports
+any other conflict, Zoom out, Zoom in and Hide phone's turn card are greyed
+and its Status names the conflict (`Changed by another tool`, `Not
+supported on this car`, `Unavailable`), also while it is patched.
+
+Remove patch, for CarPlay and Android Auto, is offered whenever something
+of the patch is on disk, also while it waits for a restart (`Patched after
+restart`). A patch waiting over the original is removed at once and the
+Status reads `Not patched`; one waiting over a running patch leaves a
+removal that waits too (`Removed after restart`). Requires
+waze-on-cluster 0.9.1, which finds Android Auto's edit sites in any aapd
+build, undoes the proven builds without their backups, and refuses a
+removal of the tool while an edit of its own is left.
+
+## 0.6.0
+
+The map on the HUD, contributed by eroobeeroo and wesleyredhat. Show on, a
+drop-down in General, chooses where the map shows: Cluster (the default),
+HUD (experimental) or Cluster and HUD (experimental); with both the HUD uses
+up to half the upload bandwidth, only what it needs. With the map not on
+the cluster, `Cluster map: Off` and the Hide BMW's turn box checkbox is
+greyed. A HUD section: `HUD map: …`, the Size slider (5 %
+a step from 30 % to 85 %) and `Position: …` with Move left, Move right, Move
+up, Move down and Centre, greyed while the HUD is off, and while the
+cluster renderer keeps it off after errors (`HUD map: Disabled after
+errors`). The settings take effect at once and are kept for the next
+start, in a file of their own that waze-on-cluster 0.8 does not read, so
+going back to it keeps working. These rows are in the head unit's display language, as is the rest
+of the page. Requires waze-on-cluster 0.9.0.
+
+The page's sections: General first, then HUD, CarPlay, Android Auto.
+Restart head unit and its Restart row are the page's last rows, so nothing
+above them moves when they show.
+
+CarPlay's section shows `CarPlay Wi-Fi: 5 GHz` or `CarPlay Wi-Fi: 2.4 GHz`
+while CarPlay runs over Wi-Fi and waze-on-cluster knows the band. On 2.4
+GHz a line under it says `Audio may cut out. On your iPhone, turn Wi-Fi off
+and on.` Saved logs include CarPlay's Wi-Fi band, the Wi-Fi interfaces'
+counters and the kernel's Wi-Fi connection lines.
+
+## 0.5.7
+
+The map's capture starts at boot after the head unit's media bus is up,
+ordered after BMW's own media services and never holding any of them up.
+Requires waze-on-cluster 0.8.6.
 
 ## 0.5.6
 
