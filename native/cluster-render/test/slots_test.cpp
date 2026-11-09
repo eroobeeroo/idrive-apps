@@ -2057,6 +2057,68 @@ struct HudRig {
     }
 };
 
+/* The panel on its own scene id (0x010004f8), the HUD on 0x01000400: both
+ * asked for and shown at once; the panel's id on probation (a fallback
+ * id, strike limit 2), so two cluster restarts right after its mapping
+ * disable it and call on_fallback, once. */
+static void panel_own_scene()
+{
+    const uint64_t kOwn = 0x010004f8;
+    HudRig r;   /* for its port and scenes */
+    SlotManager m{&r.port, &r.scenes};
+    TargetSpec mp, p, h;
+    mp.name = "map"; mp.slot = kMapSlot; mp.scene_id = kMapScene; mp.width = 1088; mp.height = 480; mp.linger_ms = 0;
+    p.name = "panel"; p.slot = kPanelSlot; p.scene_id = kOwn; p.width = 1920; p.height = 720;
+    p.fallback_scene_id = kPanelScene; p.strike_limit = 2;   /* as cluster-render's main sets it */
+    h.name = "hud"; h.slot = kHudSlot; h.scene_id = kPanelScene; h.width = 800; h.height = 480;
+    h.share = true; h.strike_limit = 2;
+    m.add(mp);
+    m.add(p);
+    m.add(h);
+    int64_t now = 100000;
+    const auto pass = [&](int64_t ms) { for (int64_t t = 0; t < ms; t += 10) { now += 10; m.tick(now); } };
+    m.want(1, true, false);
+    m.want(2, true, true);
+    pass(1200);
+    m.on_shown(kOwn, now);
+    m.on_shown(kPanelScene, now);
+    pass(50);
+    ok("panel on its own scene id: the panel and the HUD asked for and shown at once",
+       m.requested(1) && m.requested(2) && m.status(1).state == TargetState::Shown &&
+           m.status(2).state == TargetState::Shown);
+
+    const std::string path = "/tmp/crs-slots-panel-own-" + std::to_string(getpid()) + ".txt";
+    unlink(path.c_str());
+    Guard g;
+    g.load(path, "t", "boot-1");
+    m.set_guard(&g);
+    int fallbacks = 0;
+    uint64_t to = 0;
+    m.on_fallback = [&](const TargetSpec &t) { fallbacks++; to = t.fallback_scene_id; };
+    const auto drop = [&]() {
+        r.port.up = false;
+        m.on_availability(false, now);
+        r.port.up = true;
+        m.on_availability(true, now);
+    };
+    m.want(2, false, false);   /* the panel alone, so it is the one blamed */
+    pass(12000);
+    drop();   /* long after every mapping: no strike */
+    pass(1500);
+    m.on_shown(kOwn, now);
+    pass(500);
+    drop();
+    ok("panel's own id: a cluster restart right after its mapping is a strike, no fallback yet",
+       g.status_text() == "guard: panel 0x203 0x10004f8 0: 1 strike\n" && fallbacks == 0);
+    pass(1500);
+    m.on_shown(kOwn, now);
+    pass(500);
+    drop();
+    ok("panel's own id: a second disables it and calls on_fallback once, with 0x01000400",
+       m.disabled(1) && fallbacks == 1 && to == kPanelScene);
+    unlink(path.c_str());
+}
+
 static void hud_guard()
 {
     const std::string path = "/tmp/crs-slots-hud-guard-" + std::to_string(getpid()) + ".txt";
@@ -2629,6 +2691,7 @@ int main()
     guide_no_flapping();
     guide_auto_slot();
     hud_guard();
+    panel_own_scene();
     {
         /* The HUD's media pop-up (0x322): the HUD map gives way while it shows */
         TargetSpec hud2;
