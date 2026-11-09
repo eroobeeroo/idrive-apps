@@ -1,7 +1,7 @@
 {
   "id": "camera-inspect",
   "kind": "tool",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "GPL-3.0-or-later",
   "title": "Camera inspector",
   "description": "Reports, read only, what the head unit's camera inputs are (each capture node's driver, input, format and size, which process holds it, and the media graph), for Camera Probe and a camera app to come; it never takes a picture or changes a setting",

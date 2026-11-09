@@ -31,17 +31,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
-#define VERSION_STR "0.1.0"
+#define VERSION_STR "0.1.1"
 #define MAX_NODES 128
 #define MAX_FMTS 16
 
 static const char *root = "";
 static int first;   /* JSON: the next member is the first in its object or array */
+/* the node being read: named in the line a crash or the time limit writes (the JSON then ends unclosed) */
+static char current[64] = "start";
+static void fatal(int sig)
+{
+    char b[160];
+    int n = snprintf(b, sizeof b, "\n{\"stopped\":\"%s\",\"node\":\"%s\"}\n", sig == SIGALRM ? "time limit" : "signal", current);
+    if (n > 0) {
+        fflush(stdout);
+        (void)!write(1, b, (size_t)n);
+    }
+    _exit(3);
+}
 
 /* ---- JSON writing ---- */
 static void sep(void)
@@ -292,11 +305,13 @@ static void video_node(const char *name)
         knum("gid", st.st_gid);
     }
     kholders(dev);
-    /* O_NONBLOCK: never waits; opening a capture node starts nothing */
-    int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    /* read only and O_NONBLOCK: never waits; opening a capture node starts nothing, and the queries need no more */
+    snprintf(current, sizeof current, "%s", dev);
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         kerr("open_error", errno);
         close_obj();
+        fflush(stdout);
         return;
     }
     struct v4l2_capability cap;
@@ -351,9 +366,10 @@ static void subdev_node(const char *name)
     open_obj(NULL);
     kstr("node", dev);
     kholders(dev);
-    int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    snprintf(current, sizeof current, "%s", dev);
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0)
-        fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         kerr("open_error", errno);
         close_obj();
@@ -388,9 +404,10 @@ static void media_node(const char *name)
     snprintf(path, sizeof path, "%s%s", root, dev);
     open_obj(NULL);
     kstr("node", dev);
-    int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    snprintf(current, sizeof current, "%s", dev);
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0)
-        fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         kerr("open_error", errno);
         close_obj();
@@ -493,6 +510,11 @@ int main(int argc, char **argv)
         }
     }
     static char list[MAX_NODES][32];
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGSEGV, fatal);
+    signal(SIGBUS, fatal);
+    signal(SIGALRM, fatal);
+    alarm(12);   /* a node that never answers ends the report with its name, not in silence */
     first = 1;
     open_obj(NULL);
     kstr("tool", "camera-inspect " VERSION_STR);
@@ -506,16 +528,21 @@ int main(int argc, char **argv)
         printf("%u", (unsigned)g[i]);
     }
     close_arr();
+    fflush(stdout);   /* the start reaches the app at once: an empty answer means it never ran */
 
     int n = nodes("video", list, MAX_NODES);
     open_arr("video");
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) {
         video_node(list[i]);
+        fflush(stdout);
+    }
     close_arr();
     n = nodes("v4l-subdev", list, MAX_NODES);
     open_arr("subdevs");
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) {
         subdev_node(list[i]);
+        fflush(stdout);
+    }
     close_arr();
     n = nodes("media", list, MAX_NODES);
     open_arr("media");

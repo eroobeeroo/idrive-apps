@@ -16,7 +16,9 @@ or stops a stream. For each node it reports:
 - for subdevices, each pad's active format (a camera's own size on a deserializer), and the media graph's enabled
   links (which camera feeds which node), where the unit has them.
 
-It runs per connection: an app (Camera Probe 0.3.0) connects to `/dev/shm/camera-inspect/report.sock` and
+It writes its report as it goes (the start at once, then node by node), so an empty answer means it never ran,
+and a crash or its 12 s limit ends the report with a line naming the node it was reading. Every node is opened
+read only. It runs per connection: an app (Camera Probe 0.3.0) connects to `/dev/shm/camera-inspect/report.sock` and
 reads one JSON report. The service is a dynamic user in the `video` group with `CAP_SYS_PTRACE` only (to read
 other processes' fd links), no network, a read-only system.
 
