@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze mittaristossa",
     "description": "Tuo CarPlayn Waze-kartan mittaristoon: ota korjaus käyttöön HMI:stä, ja kartta seuraa CarPlayta"
+  },
+  "camera-inspect": {
+    "title": "Kameratarkastin",
+    "description": "Raportoi vain lukien pääyksikön kameratulot kamerasovelluksille; ei koskaan ota kuvaa eikä muuta asetuksia"
   }
 }

@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze na zegarach",
     "description": "Przenosi mapę Waze z CarPlay na zestaw wskaźników: włącz poprawkę w HMI, a mapa podąża za CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspektor kamer",
+    "description": "Tylko do odczytu podaje wejścia kamer jednostki głównej dla aplikacji kamer; nigdy nie robi zdjęcia ani nie zmienia ustawień"
   }
 }

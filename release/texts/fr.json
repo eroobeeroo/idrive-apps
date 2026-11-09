@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze au combiné",
     "description": "Affiche la carte Waze de CarPlay sur le combiné d'instruments : activez le correctif depuis l'interface du véhicule et la carte suit CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspecteur de caméras",
+    "description": "Indique, en lecture seule, les entrées caméra de l’unité centrale pour les applis caméra ; ne prend jamais d’image et ne change aucun réglage"
   }
 }

@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze no quadrante",
     "description": "Coloca o mapa Waze do CarPlay no quadrante de instrumentos: ative a correção no HMI e o mapa acompanha o CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspetor de câmaras",
+    "description": "Indica, só de leitura, as entradas de câmara da unidade principal para apps de câmara; nunca capta uma imagem nem altera definições"
   }
 }

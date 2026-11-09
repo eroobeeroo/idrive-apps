@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze i instrumentpanelet",
     "description": "Viser CarPlay-Waze-kortet på instrumentpanelet: aktivér patchen fra HMI'en, og kortet følger CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Kamerainspektør",
+    "description": "Viser, kun til læsning, hovedenhedens kameraindgange til kamera-apps; tager aldrig et billede og ændrer ingen indstillinger"
   }
 }

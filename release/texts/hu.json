@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze a műszerfalon",
     "description": "A CarPlay Waze-térképét a műszerfalra helyezi: kapcsolja be a javítást az autó kezelőfelületén, és a térkép követi a CarPlay-t"
+  },
+  "camera-inspect": {
+    "title": "Kameravizsgáló",
+    "description": "Csak olvasva jelenti a fejegység kamerabemeneteit kameraalkalmazásoknak; soha nem készít képet és nem módosít beállítást"
   }
 }

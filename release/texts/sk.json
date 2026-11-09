@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze na prístrojovke",
     "description": "Zobrazí mapu Waze z CarPlay na prístrojovej doske: zapnite opravu v systéme vozidla a mapa sleduje CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inšpektor kamier",
+    "description": "Iba na čítanie zistí kamerové vstupy hlavnej jednotky pre kamerové aplikácie; nikdy nenasníma obraz ani nezmení nastavenie"
   }
 }

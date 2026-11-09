@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 eroobeeroo
+[Unit]
+Description=camera-inspect: the camera inputs' report, read only
+Requires=camera-inspect.socket
+
+[Service]
+# Unprivileged: a dynamic user in the video group (the capture nodes' group),
+# with CAP_SYS_PTRACE only, to read which process holds each node
+# (/proc/<pid>/fd). It only asks the nodes (no picture, no setting changed).
+DynamicUser=yes
+User=camera-inspect
+SupplementaryGroups=video
+AmbientCapabilities=CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_SYS_PTRACE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ExecStart=/var/opt/camera-inspect/current/camera-inspect
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=10
+RuntimeMaxSec=20
+Nice=19
+MemoryLimit=32M
+TasksMax=4
+LimitCORE=0

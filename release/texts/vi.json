@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze trên bảng đồng hồ",
     "description": "Đưa bản đồ Waze của CarPlay lên bảng đồng hồ: bật bản vá từ HMI và bản đồ sẽ theo CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Trình kiểm tra camera",
+    "description": "Báo cáo, chỉ đọc, các đầu vào camera của head unit cho ứng dụng camera; không bao giờ chụp ảnh hay thay đổi cài đặt"
   }
 }

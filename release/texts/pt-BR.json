@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze no painel",
     "description": "Coloca o mapa do Waze do CarPlay no painel de instrumentos: ative o patch pelo HMI e o mapa acompanha o CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspetor de câmeras",
+    "description": "Informa, somente leitura, as entradas de câmera da central para apps de câmera; nunca tira uma imagem nem muda configurações"
   }
 }

@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze メーター表示",
     "description": "CarPlayのWazeマップをメーターに表示します。HMIからパッチを有効にすると、地図がCarPlayに連動します"
+  },
+  "camera-inspect": {
+    "title": "カメラインスペクター",
+    "description": "ヘッドユニットのカメラ入力を読み取り専用で報告します（カメラアプリ用）。撮影も設定変更も行いません"
   }
 }

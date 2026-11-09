@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze di panel instrumen",
     "description": "Menampilkan peta Waze CarPlay di panel instrumen: aktifkan patch dari HMI dan peta mengikuti CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Pemeriksa kamera",
+    "description": "Melaporkan, hanya baca, input kamera head unit untuk aplikasi kamera; tidak pernah mengambil gambar atau mengubah pengaturan"
   }
 }

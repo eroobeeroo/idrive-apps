@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze i kombiinstrumentet",
     "description": "Visar CarPlay-Waze-kartan i kombiinstrumentet: aktivera patchen från HMI:n så följer kartan CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Kamerainspektör",
+    "description": "Visar, endast läsning, huvudenhetens kameraingångar för kameraappar; tar aldrig en bild och ändrar inga inställningar"
   }
 }

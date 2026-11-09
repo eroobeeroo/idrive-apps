@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze en el cuadro",
     "description": "Muestra el mapa de Waze de CarPlay en el cuadro de instrumentos: activa el parche desde el HMI y el mapa sigue a CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspector de cámaras",
+    "description": "Informa, solo en lectura, de las entradas de cámara de la unidad principal para apps de cámara; nunca toma una imagen ni cambia ajustes"
   }
 }

@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze im Kombiinstrument",
     "description": "Bringt die CarPlay-Waze-Karte ins Kombiinstrument: Patch im HMI aktivieren, und die Karte folgt CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Kamera-Inspektor",
+    "description": "Ermittelt nur lesend die Kameraeingänge der Head Unit für Kamera-Apps; nimmt nie ein Bild auf und ändert keine Einstellung"
   }
 }

@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze na armaturi",
     "description": "Prikaže zemljevid Waze iz CarPlay na armaturni plošči: vklopite popravek v sistemu vozila in zemljevid sledi CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Pregledovalnik kamer",
+    "description": "Samo za branje poroča o vhodih kamer glavne enote za aplikacije kamer; nikoli ne posname slike in ne spremeni nastavitev"
   }
 }

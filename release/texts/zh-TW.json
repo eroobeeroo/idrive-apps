@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze 儀表板顯示",
     "description": "將 CarPlay 的 Waze 地圖顯示在儀表板上：從 HMI 啟用修補，地圖即會跟隨 CarPlay"
+  },
+  "camera-inspect": {
+    "title": "攝影機檢查器",
+    "description": "以唯讀方式回報主機的攝影機輸入，供攝影機應用程式使用；絕不擷取畫面，也不變更任何設定"
   }
 }

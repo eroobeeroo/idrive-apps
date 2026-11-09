@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze göstergede",
     "description": "CarPlay Waze haritasını gösterge paneline getirir: yamayı aracın ekranından etkinleştirin, harita CarPlay'i izler"
+  },
+  "camera-inspect": {
+    "title": "Kamera denetçisi",
+    "description": "Kamera uygulamaları için ana ünitenin kamera girişlerini salt okunur bildirir; asla görüntü almaz veya ayar değiştirmez"
   }
 }

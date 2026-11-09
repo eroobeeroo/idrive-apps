@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze 계기판 표시",
     "description": "CarPlay의 Waze 지도를 계기판에 표시합니다. HMI에서 패치를 켜면 지도가 CarPlay를 따라갑니다"
+  },
+  "camera-inspect": {
+    "title": "카메라 검사기",
+    "description": "카메라 앱을 위해 헤드 유닛의 카메라 입력을 읽기 전용으로 보고합니다. 사진을 찍거나 설정을 바꾸지 않습니다"
   }
 }

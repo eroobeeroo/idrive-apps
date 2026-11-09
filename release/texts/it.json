@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze sul quadro",
     "description": "Porta la mappa Waze di CarPlay sul quadro strumenti: attiva la patch dal sistema dell'auto e la mappa segue CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Ispettore telecamere",
+    "description": "Riporta, in sola lettura, gli ingressi telecamera dell’unità principale per le app telecamera; non scatta mai immagini né cambia impostazioni"
   }
 }

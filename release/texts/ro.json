@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze pe bord",
     "description": "Aduce harta Waze din CarPlay pe bordul digital: activați patch-ul din interfața mașinii, iar harta urmează CarPlay"
+  },
+  "camera-inspect": {
+    "title": "Inspector camere",
+    "description": "Raportează, doar citire, intrările de cameră ale unității principale pentru aplicații de cameră; nu face niciodată o imagine și nu schimbă setări"
   }
 }

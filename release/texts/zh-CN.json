@@ -10,5 +10,9 @@
   "robertn_waze_cluster": {
     "title": "Waze 仪表盘显示",
     "description": "将 CarPlay 的 Waze 地图显示在仪表盘上：在 HMI 中启用补丁，地图即跟随 CarPlay"
+  },
+  "camera-inspect": {
+    "title": "摄像头检查器",
+    "description": "以只读方式报告主机的摄像头输入，供摄像头应用使用；从不拍摄画面，也不更改任何设置"
   }
 }
