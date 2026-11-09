@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Robert Nisipeanu
 #include "map_feeds.h"
 
+#include "layout_window.h"
 #include "log.h"
 
 namespace woc {
@@ -34,7 +35,7 @@ void MapFeeds::follow()
 {
     /* A feed made while the other is there starts from its newest picture:
      * the HUD's is made first, so it can still take the cluster's. */
-    const bool hud = hud_on_ && (!cluster_on_ || base_.target == "map");
+    const bool hud = hud_on_ && (!cluster_on_ || cluster_target_now() == "map");
     if (hud && !hud_) {
         FeedConfig fc = base_;
         fc.target = "hud";
@@ -53,7 +54,13 @@ void MapFeeds::follow()
         /* off, its connection closes: the renderer drops its layer and the
          * KOMBI shows its own content again */
         if (cluster_on_) {
-            cluster_.reset(new MapFeed(base_));
+            FeedConfig fc = base_;
+            if (window_on_) {
+                fc.target = "panel";
+                fc.rect = window_;
+                fc.z = kWindowZ;
+            }
+            cluster_.reset(new MapFeed(fc));
             cluster_->set_paused(paused_);
             cluster_->set_stream(live_, frozen_, picture_);
             if (hud_ && hud_->latest(&copy_))
@@ -77,13 +84,37 @@ void MapFeeds::follow()
 bool MapFeeds::set_target(const std::string &name)
 {
     const std::string t = cluster_target(name);
-    if (t.empty() || (cluster_ && !cluster_->set_target(t)))
+    if (t.empty() || (cluster_ && !window_on_ && !cluster_->set_target(t)))
         return false;
     base_.target = t;
     if (hud_on_ && cluster_on_ && t != "map")
         log_warn("hud: not while the map is on %s, which shares the HUD's scene id", t.c_str());
     follow();
     return true;
+}
+
+void MapFeeds::set_window(const MapRect *window)
+{
+    const bool on = window != nullptr;
+    if (on == window_on_ && (!on || same_rect(*window, window_)))
+        return;
+    if (on && cluster_ && !cluster_->set_place("panel", *window, kWindowZ)) {
+        log_warn("layout window: the cluster renderer has no panel target; the map stays where it is");
+        return;
+    }
+    window_on_ = on;
+    if (on) {
+        window_ = *window;
+        log_info("layout window: the map over the layout at %u,%u %ux%u (panel)", window->x, window->y, window->w,
+                 window->h);
+    } else {
+        if (cluster_)
+            cluster_->set_place(base_.target, base_.rect, 0);
+        log_info("layout window: gone; the map back on %s", base_.target.c_str());
+    }
+    if (hud_on_ && cluster_on_ && on)
+        log_warn("hud: not while the map is over a layout on the panel, which shares the HUD's scene id");
+    follow();
 }
 
 void MapFeeds::set_cluster(bool on)

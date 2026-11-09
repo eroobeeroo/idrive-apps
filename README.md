@@ -27,7 +27,13 @@ included, unchanged), with two additions to Waze on cluster and its app:
   HUD no longer take turns. The id is on probation: if the cluster restarts twice right after the panel is
   mapped, the renderer goes back to the shared id by itself (native/cluster-render/README.md).
 
-The map settings are saved per driver profile. Its versions sit above the original's (waze-on-cluster 0.9.106
+- **The map over a layout** (waze-on-cluster): with Cluster Layouts' centre set to Waze, the map is drawn in the
+  layout's own panel, above it, filling its window (Cluster Layouts writes the window to
+  /dev/shm/cluster-info/map_window.txt while it shows; `layout_window_file` in the conf). In the map slot under
+  the layout the cluster drew its own map screen (speed readout, edge shading) over the map. Back to its own place
+  as soon as the layout goes.
+
+The map settings are saved per driver profile. Its versions sit above the original's (waze-on-cluster 0.9.107
 on 0.9.6, the app 0.6.104 on 0.6.4, cluster-render 0.5.100 on 0.5.0), so the Store installs them from here
 where both repositories are sources; everything else comes from the original.
 

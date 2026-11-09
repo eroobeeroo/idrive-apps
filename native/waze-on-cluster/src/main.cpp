@@ -46,6 +46,7 @@
 #include "map_feed.h"
 #include "map_feeds.h"
 #include "map_geometry.h"
+#include "layout_window.h"
 #include "map_state.h"
 #include "refused.h"
 #include "video_producer.h"
@@ -306,7 +307,8 @@ int serve(Config cfg)
     StreamLiveness liveness(vc.stall_ms);
     std::string last_detail;
     AltScreen::State alt_state = AltScreen::Unknown;
-    int64_t alt_read_ms = 0;
+    int64_t alt_read_ms = 0, window_read_ms = -1000;
+    const std::string window_file = cfg.str("layout_window_file");
     for (;;) {
         std::vector<pollfd> p = {{sig_fd, POLLIN, 0}, {control.listen_fd(), POLLIN, 0}, {control.owner_fd(), POLLIN, 0},
                                  {producer.ready_fd(), POLLIN, 0}};
@@ -333,6 +335,13 @@ int serve(Config cfg)
                 feed.repeat(id, now);
             else
                 feed.offer(&frame, id, now);
+        }
+        if (now - window_read_ms >= 1000) {
+            /* Cluster Layouts' map window (layout_window.h): the map over the layout while it is fresh */
+            MapRect w;
+            const bool held = read_layout_window(window_file, &w);
+            feed.set_window(held ? &w : nullptr);
+            window_read_ms = now;
         }
         if (now - alt_read_ms >= 1000) {
             const AltScreen::State s = cfg.num("alt_screen_port") ? alt.read() : AltScreen::Unknown;
@@ -503,6 +512,7 @@ void define_keys(Config *cfg)
     cfg->define("tex_size", "1088x480");
     cfg->define("src_crop", "");
     cfg->define("map_rect", "");
+    cfg->define("layout_window_file", "/dev/shm/cluster-info/map_window.txt");
     cfg->define("dirty_threshold", "8");
     cfg->define("dirty_settle_ms", "1000");
     cfg->define("stall_ms", "6000");

@@ -63,6 +63,7 @@ struct FeedConfig {
     std::string target = "map";
     cr::VideoOptions video;   /* w and h are the decoded frame's */
     MapRect rect;             /* where in the target; unset: the map area */
+    int z = 0;                /* the layer's order in its class (the layout's window: above the layout) */
     bool guide_hold = true;   /* the layer's guide_hold: BMW's turn box hidden while the map shows */
     /* On the HUD: the map's width in percent of the HUD's (its height follows
      * the picture's shape, at most the HUD's), centred. 0: the kit's fitted
@@ -140,6 +141,10 @@ public:
      * native central-map slot. False for a name the renderer has not got
      * (known once connected). */
     bool set_target(const std::string &name);
+    /* The map's target, rect (unset: the map area) and order at once, the
+     * layer made again only when one of them changed (the layout's window,
+     * layout_window.h). False for a target the renderer has not got. */
+    bool set_place(const std::string &name, const MapRect &rect, int z);
     /* The layer's guide_hold from now on. */
     void set_guide_hold(bool hold);
     const std::string &target() const { return cfg_.target; }

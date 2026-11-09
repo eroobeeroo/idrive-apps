@@ -54,6 +54,12 @@ public:
      * changed) for a target the renderer has not got. The HUD's feed goes
      * while the cluster's map is on panel. */
     bool set_target(const std::string &name);
+    /* The layout's map window (layout_window.h): the cluster's map on the
+     * panel at that rect above the layout, or (null) back to its own target
+     * and rect. The HUD's feed goes while the window is held on a renderer
+     * whose panel shares the HUD's scene id, as with target = panel. */
+    void set_window(const MapRect *window);
+    bool window() const { return window_on_; }
     /* The cluster and the HUD on or off, each at once. */
     void set_cluster(bool on);
     void set_hud(bool on);
@@ -103,6 +109,10 @@ private:
     unsigned hud_fps_;
     bool cluster_on_, hud_on_;
     bool paused_ = false;
+    bool window_on_ = false;
+    MapRect window_;
+    /* where the cluster's map goes now: the window's place, else its own */
+    std::string cluster_target_now() const { return window_on_ ? std::string("panel") : base_.target; }
     std::unique_ptr<MapFeed> cluster_, hud_;
     std::vector<uint8_t> copy_;   /* a picture on its way from one feed to the other */
     uint64_t id_ = 0;   /* the newest frame's */

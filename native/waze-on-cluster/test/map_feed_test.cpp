@@ -72,6 +72,7 @@
 #include "../src/map_feed.h"
 #include "src/log.h"
 #include "../src/map_feeds.h"
+#include "../src/layout_window.h"
 #include "../src/atlas_scale.h"
 
 using namespace woc;
@@ -740,6 +741,23 @@ int main()
                                                          feeds.status("decode").hud);
     ok("start: back on map, the HUD's feed again", feeds.set_target("map") && feeds.hud_feed());
     bpump(2500, &f2);
+
+    /* ---- the layout's map window (Cluster Layouts' Waze centre): on the panel, above the layout ---- */
+    {
+        woc::MapRect w;
+        w.x = 416; w.y = 120; w.w = 1088; w.h = 480;
+        feeds.set_window(&w);
+        bpump(2500, &f2);
+        const crs::Layer *wl = layer_on(1);
+        ok("window: the map on the panel at the window, over the layout (z 900), the HUD's feed off",
+           wl && wl->params.rect.x == 416 && wl->params.rect.y == 120 && wl->params.rect.w == 1088 && wl->params.rect.h == 480 &&
+               wl->params.z == woc::kWindowZ && !feeds.hud_feed() && feeds.window());
+        ok("window: a control start keeps the map in the window", feeds.set_target("map") && feeds.cluster()->target() == "panel");
+        feeds.set_window(nullptr);
+        bpump(2500, &f2);
+        ok("window gone: back on the map slot at z 0, the HUD's feed again",
+           feeds.cluster()->target() == "map" && layer_on(0) && layer_on(0)->params.z == 0 && feeds.hud_feed() && !feeds.window());
+    }
 
     /* ---- the HUD map's size ---- */
     const crs::Layer *hl = layer_on(2);

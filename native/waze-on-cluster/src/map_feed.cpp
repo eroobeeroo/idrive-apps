@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Robert Nisipeanu
 #include "map_feed.h"
 
+#include "layout_window.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -122,6 +124,7 @@ void MapFeed::make_layer()
     lo_ = cr::LayerOptions();
     lo_.target = cfg_.target;
     lo_.klass = "content";
+    lo_.z = cfg_.z;
     lo_.contend = true;   /* the map takes the slot back from the stock map */
     lo_.guide_hold = cfg_.guide_hold;
     lo_.x = (int)q.x;
@@ -253,6 +256,27 @@ bool MapFeed::set_target(const std::string &name)
     }
     layer_ = 0;
     cfg_.target = t;
+    if (client_.connected())
+        make_layer();
+    return true;
+}
+
+bool MapFeed::set_place(const std::string &name, const MapRect &rect, int z)
+{
+    const std::string t = name == "sail" ? "map" : name;
+    uint32_t w, h;
+    if (client_.connected() && !target_size(client_.targets, t, &w, &h))
+        return false;
+    if (t == cfg_.target && same_rect(rect, cfg_.rect) && z == cfg_.z && layer_)
+        return true;
+    if (layer_) {
+        keep_newest();
+        client_.drop(layer_);
+    }
+    layer_ = 0;
+    cfg_.target = t;
+    cfg_.rect = rect;
+    cfg_.z = z;
     if (client_.connected())
         make_layer();
     return true;
